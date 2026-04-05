@@ -1,0 +1,133 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helper Functions ─────────────────────────────────
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isAdmin() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isValidString(field, maxLen) {
+      return field is string && field.size() > 0 && field.size() <= maxLen;
+    }
+
+    function isValidTimestamp(field) {
+      return field is timestamp;
+    }
+
+    // ── Users ────────────────────────────────────────────
+    // Users can only read/write their own profile.
+    // Admins can read any user profile.
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId)
+        && isValidString(request.resource.data.email, 320)
+        && isValidString(request.resource.data.displayName, 80)
+        && request.resource.data.uid == userId
+        && request.resource.data.role == 'user'; // cannot self-promote to admin
+      
+      allow update: if (isOwner(userId)
+        && request.resource.data.get('uid', userId) == userId
+        && request.resource.data.get('email', '') == resource.data.get('email', '') // email immutable
+        && request.resource.data.get('role', 'user') == resource.data.get('role', 'user') // role immutable by user
+        && (
+          // If the display name is NOT changing, bypass the cooldown (e.g. for photoURL updates)
+          request.resource.data.get('displayName', '') == resource.data.get('displayName', '')
+          || (
+            // If the display name IS changing, enforce the 30-day cooldown
+            // and mandate the new timestamp is set to securely lock it again
+            request.resource.data.get('nameLastChangedAt', null) == request.time
+            && (!('nameLastChangedAt' in resource.data) || request.time.toMillis() >= resource.data.nameLastChangedAt.toMillis() + 2592000000)
+          )
+        )) || isAdmin();
+        
+      allow delete: if false; // accounts are not deletable via client
+    }
+
+    // ── Projects ─────────────────────────────────────────
+    // Private by default. Public projects are readable by all.
+    // Only the owner can create, update, or delete their projects.
+    match /projects/{projectId} {
+      allow read: if resource.data.isPublic == true
+                  || isOwner(resource.data.ownerId)
+                  || isAdmin();
+
+      allow create: if isSignedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && isValidString(request.resource.data.name, 128)
+        && request.resource.data.isPublic is bool
+        && request.resource.data.blockCount is int
+        && request.resource.data.blockCount >= 0;
+
+      allow update: if isOwner(resource.data.ownerId)
+        && request.resource.data.ownerId == resource.data.ownerId; // cannot transfer ownership
+
+      allow delete: if isOwner(resource.data.ownerId) || isAdmin();
+    }
+
+    // ── Compilation Jobs ─────────────────────────────────
+    // Users can create jobs (only for themselves) and read their own jobs.
+    // Only the backend service account (via Admin SDK bypassing rules) can update jobs.
+    // No client can update job status — prevents spoofing a successful compilation.
+    match /compilationJobs/{jobId} {
+      allow read: if isSignedIn() && isOwner(resource.data.userId);
+
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && isValidString(request.resource.data.board, 64)
+        && isValidString(request.resource.data.projectId, 128)
+        && request.resource.data.status == 'queued'; // must start as 'queued'
+
+      // Client cannot update job status (prevents faking a successful compilation)
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // ── Marketplace Blocks ───────────────────────────────
+    // Publicly readable. Authenticated users can publish their own blocks.
+    // Only the author or an admin can update/delete.
+    match /marketplace/{blockId} {
+      allow read: if true; // public
+
+      allow create: if isSignedIn()
+        && request.resource.data.authorId == request.auth.uid
+        && isValidString(request.resource.data.name, 128)
+        && isValidString(request.resource.data.description, 2000)
+        && request.resource.data.downloads is int
+        && request.resource.data.downloads == 0 // cannot inflate download count
+        && request.resource.data.verified == false; // cannot self-verify
+
+      allow update: if (isSignedIn() && isOwner(resource.data.authorId)
+          && request.resource.data.authorId == resource.data.authorId
+          && request.resource.data.verified == resource.data.verified) // cannot self-verify
+        || isAdmin();
+
+      allow delete: if isOwner(resource.data.authorId) || isAdmin();
+    }
+
+    // ── User Custom Blocks ────────────────────────────────
+    // Private block drafts / work-in-progress. Owner access only.
+    match /blocks/{blockId} {
+      allow read, write: if isSignedIn() && isOwner(resource.data.ownerId);
+      allow create: if isSignedIn()
+        && request.resource.data.ownerId == request.auth.uid;
+      allow delete: if isSignedIn() && isOwner(resource.data.ownerId);
+    }
+
+    // ── Deny all other paths ─────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
