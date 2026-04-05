@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { getBoardConfig } from '../boards/registry';
 import { TASK_ARCHITECTURES, ML_ARCHITECTURES } from '../boards/MLCapabilities';
 import { db } from "../lib/firebase";

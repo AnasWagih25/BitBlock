@@ -1,6 +1,6 @@
 // Minimal STK500 stub. A real implementation implies bit-banging the STK500v1 byte sequences.
 
-export async function flashSTK500(port: any, hexData: string, onProgress: (msg: string) => void) {
+export async function flashSTK500(_port: any, _hexData: string, onProgress: (msg: string) => void) {
   try {
     onProgress("Opening STK500 port (115200)...");
     

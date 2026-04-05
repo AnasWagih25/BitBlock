@@ -1,6 +1,6 @@
 import { compiler } from "../compiler/assembler";
 
-export function generateMLBlock(Blockly: any, modelName: string, labels: string[]) {
+export function generateMLBlock(Blockly: any, modelName: string, _labels: string[]) {
   const blockId = `ml_model_${modelName.toLowerCase().replace(/ /g, "_")}`;
 
   Blockly.Blocks[blockId] = {

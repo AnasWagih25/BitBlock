@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import CassetteMascot from "../components/ui/CassetteMascot";
 import { Zap, Puzzle, CloudLightning, Usb, Cpu, Globe } from "lucide-react";

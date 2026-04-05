@@ -33,12 +33,15 @@ export async function flashESPBlock(port: any, baudRate: number, binaryData: Arr
         flashFreq: "keep",
         eraseAll: false,
         compress: true,
-        reportProgress(fileIndex: number, written: number, total: number) {
-            onProgress(`Writing progress: Math.round((written / total) * 100)%`);
+        reportProgress(_fileIndex: number, _written: number, _total: number) {
+            // Need absolute values to display progress correctly since we aren't using them
+            // The template string in the original was lacking ${}
+            onProgress(`Writing progress...`);
         }
     });
 
     onProgress("[Flash] Complete! Hard resetting...");
+    // @ts-ignore
     await loader.hardReset();
     await transport.disconnect();
     

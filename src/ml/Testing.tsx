@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 export default function TestingView() {
   const [status, setStatus] = useState<"idle" | "connecting" | "testing">("idle");
