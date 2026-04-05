@@ -1,16 +1,14 @@
 import { useState, useRef, useEffect } from 'react';
-import { getBoardConfig } from '../boards/registry';
 import { db } from "../lib/firebase";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { ML_ARCHITECTURES } from '../boards/MLCapabilities';
 import { Camera, Upload, Trash2, Scissors, Check, Tag } from 'lucide-react';
 
-export default function DataCollection({ projectId, boardId, task: _task, architecture }: { projectId: string; boardId: string; task?: string; architecture?: string }) {
+export default function DataCollection({ projectId, architecture }: { projectId: string; boardId: string; task?: string; architecture?: string }) {
   const [dataLabel, setDataLabel] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [samples, setSamples] = useState(0);
   const [streamData, setStreamData] = useState<number[][]>([]);
-  const _board = getBoardConfig(boardId);
 
   const portRef = useRef<any>(null);
   const readerRef = useRef<any>(null);
@@ -21,7 +19,7 @@ export default function DataCollection({ projectId, boardId, task: _task, archit
 
   const [dataset, setDataset] = useState<{id: string, url: string, label: string, blob?: Blob}[]>([]);
   const [selectedSample, setSelectedSample] = useState<string | null>(null);
-  const [crop, setCrop] = useState({ x: 0, y: 0, size: 200 });
+  const [crop] = useState({ x: 0, y: 0, size: 200 });
 
   const currentArch = architecture ? ML_ARCHITECTURES[architecture] : null;
   const inputType = currentArch ? currentArch.recommendedInput : "IMU";
