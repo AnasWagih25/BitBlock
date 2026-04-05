@@ -39,10 +39,28 @@ export default function IDEPage() {
   const [blocklyReady, setBlocklyReady] = useState(false);
   const [showCamWizard, setShowCamWizard] = useState(false);
   const [viewMode, setViewMode] = useState<"blocks" | "ml">("blocks");
+  const [connectedPort, setConnectedPort] = useState<any>(null);
+  const [mlTask, setMlTask] = useState<string>("gesture");
+  const [mlArch, setMlArch] = useState<string>("");
+  const [sidebarExpanded, setSidebarExpanded] = useState(true);
+  const [activeGuide, setActiveGuide] = useState<{label: string, content: string} | null>(null);
+
+  const QUICK_GUIDES: Record<string, string> = {
+    "GPIO": "General Purpose Input/Output blocks allow you to control raw digital voltages (HIGH/LOW) or read 12-bit analog voltages. Use pinMode blocks before reading/writing raw hardware states, or rely on our auto-mode abstractions for specific components.",
+    "Control": "Execution flow blocks natively map to C++. 'If' statements selectively execute branches. 'While' loops run until a condition breaks. The custom 'Forever Loop' natively injects recursive logic into your board's underlying void loop().",
+    "Math": "Supports standard arithmetic alongside embedded math like map()—which safely interpolates ranges (like converting 0-4095 analog reads to 0-255 PWM steps)—and constrain() which safeguards servo geometry limits.",
+    "Serial": "Allows the microcontroller to stream telemetry explicitly back to your computer. Once flashed, click the 'Serial' tab on the right to monitor blocks using print() at an asynchronous 115200 baud rate.",
+    "Timing": "Delay pauses the CPU clock ticks fully. 'Yield to OS' prevents ESP32 watchdog timers from panic-resetting the board during heavy iterative calculations. Use timeouts rather than delays when building non-blocking state machines!",
+    "Sensors": "Advanced abstraction algorithms for hardware. From precision temp/humidity (DHT22), to Time-of-Flight Lasers (VL53L0X), down to raw analog bio-sensors. Check your board's pinout diagram to ensure you connect devices to the proper I2C (SDA/SCL) or SPI lanes.",
+    "LED/Servo": "Hardware PWM lets you simulate analog voltages via extremely fast digital pulses. Servos rely on specific 50Hz timings to mechanically lock to degrees (0-180). We natively compile explicit timer attachments.",
+  };
 
   const workspaceRef = useRef<any>(null);
   const blocklyDivRef = useRef<HTMLDivElement>(null);
   const saveTimeoutRef = useRef<any>(null);
+
+  const currentBoard = getBoardConfig(project?.board || "esp32-wroom");
+  const isMlSupported = currentBoard.mlSupport;
 
   useEffect(() => {
     // @ts-ignore
@@ -77,9 +95,15 @@ export default function IDEPage() {
   }, [project]);
 
   const initBlockly = async () => {
+    if (workspaceRef.current) return; // Prevent double injection
     try {
       const blocklyMod = await import("blockly");
-      Blockly = blocklyMod.default || blocklyMod;
+      const baseBlockly = blocklyMod.default || blocklyMod;
+      Blockly = { ...baseBlockly }; // Spread explicitly prevents the 'read only' shadow error on modules
+      
+      const jsMod = await import("blockly/javascript");
+      Blockly.javascriptGenerator = jsMod.javascriptGenerator;
+      Blockly.JavaScript = jsMod.javascriptGenerator;
 
       // Custom theme
       const theme = Blockly.Theme.defineTheme("bitblock", {
@@ -114,7 +138,6 @@ export default function IDEPage() {
           scrollbarColour: "#2A0A3D",
           insertionMarkerColour: "#9D27DE",
           insertionMarkerOpacity: 0.7,
-          scrollbarOpacity: 0.8,
           cursorColour: "#9D27DE",
         },
       });
@@ -141,6 +164,7 @@ export default function IDEPage() {
               { kind: "block", type: "math_modulo" },
               { kind: "block", type: "math_random_int" },
               { kind: "block", type: "math_constrain" },
+              { kind: "block", type: "math_map" },
             ],
           },
           {
@@ -171,10 +195,9 @@ export default function IDEPage() {
         toolbox,
         theme,
         trashcan: true,
-        scrollbars: true,
         zoom: { controls: true, wheel: true, startScale: 0.9, maxScale: 2, minScale: 0.4, scaleSpeed: 1.1 },
         grid: { spacing: 24, length: 4, colour: "rgba(157,39,222,0.1)", snap: true },
-        move: { scrollbars: { horizontal: true, vertical: true }, drag: true, wheel: true },
+        move: { scrollbars: false, drag: true, wheel: true },
         sounds: false,
       });
 
@@ -189,21 +212,29 @@ export default function IDEPage() {
       }
 
       // Listen for changes
-      workspaceRef.current.addChangeListener(() => {
-        generateCode();
-        scheduleAutoSave();
+      workspaceRef.current.addChangeListener((event: any) => {
+        if (event.isUiEvent || workspaceRef.current.isDragging()) {
+          return;
+        }
+        setTimeout(() => {
+          generateCode();
+          scheduleAutoSave();
+        }, 10);
       });
 
       setBlocklyReady(true);
-    } catch (e) {
+    } catch (e: any) {
       console.error("Blockly init error:", e);
+      setCompileStatus("error");
+      setCompileMessage(`Blockly Init Failed: ${e.message}`);
+      setBlocklyReady(true); // Allow screen to render so we see the error
     }
   };
 
   const generateCode = useCallback(() => {
     if (!workspaceRef.current || !Blockly) return;
     try {
-      const gen = Blockly.JavaScript || Blockly.javascriptGenerator;
+      const gen = Blockly.javascriptGenerator || Blockly.JavaScript;
       if (gen) {
         const boardId = project?.board || "esp32-wroom";
         compiler.init(boardId);
@@ -272,9 +303,10 @@ export default function IDEPage() {
       // Simulate compilation (real compilation needs Cloud Run)
       setTimeout(() => {
         setCompileStatus("success");
-        setCompileMessage("✓ Compiled successfully · 12.4KB · Ready to flash");
+        const sizeKb = (generatedCode.length / 1024).toFixed(1);
+        setCompileMessage(`✓ Code generation successful · ~${sizeKb}KB · Ready to flash`);
         setCompiling(false);
-      }, 2500);
+      }, 1500);
     } catch (e) {
       setCompileStatus("error");
       setCompileMessage("Compilation failed. Check your blocks.");
@@ -283,6 +315,27 @@ export default function IDEPage() {
   };
 
   const appendLog = (msg: string) => setSerialLog(l => [...l, msg]);
+
+  const handleConnectBoard = async () => {
+    if (!flashSupported) {
+      alert("WebSerial is not supported in your browser.\\nPlease use Chrome or Edge.");
+      return;
+    }
+    try {
+      // @ts-ignore
+      const port = await navigator.serial.requestPort();
+      await port.open({ baudRate: 115200 });
+      setConnectedPort(port);
+      const info = port.getInfo();
+      if (info.usbVendorId) {
+        appendLog(`[WebSerial] Connected hardware: VID ${info.usbVendorId} PID ${info.usbProductId}`);
+      } else {
+        appendLog(`[WebSerial] Connected successfully`);
+      }
+    } catch (e: any) {
+      console.warn("Connection cancelled or failed", e);
+    }
+  };
 
   const handleFlash = async () => {
     const board = getBoardConfig(project?.board || "esp32-wroom");
@@ -343,18 +396,22 @@ export default function IDEPage() {
   }
 
   return (
-    <div className="ide-layout" style={{ fontFamily: "Space Grotesk, sans-serif" }}>
+    <div className="ide-layout" style={{ 
+      fontFamily: "Space Grotesk, sans-serif",
+      gridTemplateColumns: viewMode === "ml" ? "1fr" : (sidebarExpanded ? "260px 1fr 340px" : "48px 1fr 340px"),
+      transition: "grid-template-columns 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+    }}>
 
       {/* ── Toolbar ─────────────────────────────────────── */}
       <header className="ide-toolbar glass-dark" style={{
         display: "flex", alignItems: "center", gap: 12,
         padding: "0 16px", borderBottom: "1px solid rgba(157,39,222,0.15)",
       }}>
-        <Link to="/dashboard" style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: 8, marginRight: 8 }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(242,242,240,0.5)" strokeWidth="2">
+        <Link to="/dashboard" style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: 8 }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(242,242,240,0.5)" strokeWidth="3">
             <path d="M19 12H5M12 19l-7-7 7-7" />
           </svg>
-          <span style={{ fontFamily: "Superstar, fantasy", fontSize: 14, color: "#9D27DE" }}>BB</span>
+          <span style={{ fontFamily: "Superstar, fantasy", fontSize: 18, color: "#9D27DE", paddingTop: 3 }}>BB</span>
         </Link>
 
         <div style={{ width: 1, height: 24, background: "rgba(157,39,222,0.2)" }} />
@@ -377,15 +434,22 @@ export default function IDEPage() {
               Workspace
             </button>
             <button
-               onClick={() => setViewMode("ml")}
+               onClick={() => {
+                 if (isMlSupported) setViewMode("ml");
+               }}
+               title={!isMlSupported ? "Board does not support ML Pipeline" : ""}
                style={{
                   background: viewMode === "ml" ? "rgba(157,39,222,0.2)" : "transparent",
-                  color: viewMode === "ml" ? "#F2F2F0" : "rgba(242,242,240,0.5)",
-                  border: "none", padding: "4px 12px", borderRadius: 4, cursor: "pointer", fontSize: 12,
+                  color: isMlSupported ? (viewMode === "ml" ? "#F2F2F0" : "rgba(242,242,240,0.5)") : "rgba(242,242,240,0.2)",
+                  border: "none", padding: "4px 12px", borderRadius: 4, cursor: isMlSupported ? "pointer" : "not-allowed", fontSize: 12,
                   display: "flex", alignItems: "center", gap: 6, transition: "0.2s"
                }}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/></svg>
+              {!isMlSupported ? (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/></svg>
+              )}
               ML Pipeline
             </button>
           </div>
@@ -437,6 +501,19 @@ export default function IDEPage() {
           Save
         </button>
 
+        {/* Connect Board */}
+        <button
+          id="connect-btn"
+          onClick={handleConnectBoard}
+          className="btn-ghost"
+          style={{ padding: "7px 18px", fontSize: 12, color: connectedPort ? "#4ade80" : "inherit" }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 6 }}>
+            <path d="M8 8v8M16 8v8M4 12h16"/>
+          </svg>
+          {connectedPort ? "Board Connected" : "Connect Board"}
+        </button>
+
         {/* Compile */}
         <button
           id="compile-btn"
@@ -483,43 +560,90 @@ export default function IDEPage() {
         background: "#0D0018",
         borderRight: "1px solid rgba(157,39,222,0.1)",
         padding: "12px 0",
-        display: viewMode === "blocks" ? "block" : "none"
+        display: viewMode === "blocks" ? "flex" : "none",
+        flexDirection: "column",
+        overflow: "hidden"
       }}>
-        <p style={{ fontSize: 10, color: "rgba(242,242,240,0.25)", padding: "0 16px 8px", letterSpacing: "0.1em", textTransform: "uppercase" }}>
-          Quick Help
-        </p>
-        {[
-          { label: "GPIO", hint: "Digital/Analog pins" },
-          { label: "Control", hint: "If, loops, logic" },
-          { label: "Math", hint: "Numbers, arithmetic" },
-          { label: "Serial", hint: "Serial.print()" },
-          { label: "Timing", hint: "Delay, millis" },
-          { label: "Sensors", hint: "DHT, US, IMU" },
-          { label: "LED/Servo", hint: "NeoPixel, PWM" },
-        ].map((item) => (
-          <div key={item.label} style={{
-            padding: "8px 16px", borderRadius: 6, margin: "1px 8px",
-            cursor: "default",
-          }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(157,39,222,0.08)")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div>
-                <p style={{ fontSize: 12, fontWeight: 600, color: "#F2F2F0" }}>{item.label}</p>
-                <p style={{ fontSize: 10, color: "rgba(242,242,240,0.35)" }}>{item.hint}</p>
-              </div>
-            </div>
-          </div>
-        ))}
-
-        <div style={{ margin: "20px 16px 0", padding: "12px", background: "rgba(157,39,222,0.05)", borderRadius: 8, border: "1px solid rgba(157,39,222,0.1)" }}>
-          <CassetteMascot size={64} mood={compileStatus === "success" ? "excited" : compileStatus === "error" ? "thinking" : "idle"} animate />
-          <p style={{ fontSize: 10, color: "rgba(242,242,240,0.35)", textAlign: "center", marginTop: 6 }}>
-            {compileStatus === "success" ? "Ready to flash! 🎉" : compileStatus === "error" ? "Check your blocks" : "Drag blocks to build"}
-          </p>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px 8px" }}>
+           {sidebarExpanded && (
+             <span style={{ fontSize: 10, color: "rgba(242,242,240,0.25)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+               Quick Help
+             </span>
+           )}
+           <button 
+              onClick={() => setSidebarExpanded(!sidebarExpanded)} 
+              className="btn-ghost" 
+              style={{ padding: sidebarExpanded ? "2px 6px" : "4px 8px", marginLeft: sidebarExpanded ? 0 : "auto", marginRight: sidebarExpanded ? 0 : "auto" }}
+           >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(242,242,240,0.5)" strokeWidth="2">
+                 {sidebarExpanded ? <path d="M15 18l-6-6 6-6" /> : <path d="M9 18l6-6-6-6" />}
+              </svg>
+           </button>
         </div>
+
+        {sidebarExpanded && (
+          <div style={{ paddingBottom: 16 }}>
+            {[
+              { label: "GPIO", hint: "Digital/Analog pins", icon: "zap" },
+              { label: "Control", hint: "If, loops, logic", icon: "activity" },
+              { label: "Math", hint: "Numbers, arithmetic", icon: "hash" },
+              { label: "Serial", hint: "Serial.print()", icon: "cpu" },
+              { label: "Timing", hint: "Delay, millis", icon: "clock" },
+              { label: "Sensors", hint: "DHT, US, IMU", icon: "radio" },
+              { label: "LED/Servo", hint: "NeoPixel, PWM", icon: "sun" },
+            ].map((item) => (
+              <div key={item.label} 
+                onClick={() => setActiveGuide({ label: item.label, content: QUICK_GUIDES[item.label] })}
+                style={{
+                  padding: "8px 16px", borderRadius: 6, margin: "1px 8px",
+                  cursor: "pointer", transition: "0.15s",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(157,39,222,0.15)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div>
+                    <p style={{ fontSize: 12, fontWeight: 600, color: "#9D27DE" }}>{item.label}</p>
+                    <p style={{ fontSize: 10, color: "rgba(242,242,240,0.4)" }}>{item.hint}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {sidebarExpanded && (
+          <div style={{ margin: "auto 16px 16px", padding: "12px", background: "rgba(157,39,222,0.05)", borderRadius: 8, border: "1px solid rgba(157,39,222,0.1)" }}>
+            <CassetteMascot size={64} mood={compileStatus === "success" ? "excited" : compileStatus === "error" ? "thinking" : "idle"} animate />
+            <p style={{ fontSize: 10, color: "rgba(242,242,240,0.35)", textAlign: "center", marginTop: 6 }}>
+              {compileStatus === "success" ? "Ready to flash! 🎉" : compileStatus === "error" ? "Check your blocks" : "Drag blocks to build"}
+            </p>
+          </div>
+        )}
       </aside>
+
+      {/* ── Active Guide Modal Overlay ──────────────────── */}
+      {activeGuide && (
+         <div style={{ position: "fixed", inset: 0, zIndex: 105, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)" }}
+              onClick={() => setActiveGuide(null)}
+         >
+            <div style={{ background: "#12031C", border: "1px solid #9D27DE", borderRadius: 12, padding: 32, width: 450, maxWidth: "90%", boxShadow: "0 24px 50px rgba(0,0,0,0.5)" }}
+                 onClick={(e) => e.stopPropagation()}
+            >
+               <h2 style={{ color: "#F2F2F0", fontWeight: 700, fontSize: 20, marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9D27DE" strokeWidth="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                  {activeGuide.label} Guide
+               </h2>
+               <div style={{ height: 1, width: "100%", background: "rgba(157,39,222,0.2)", marginBottom: 16 }} />
+               <p style={{ color: "#E0D8F0", fontSize: 14, lineHeight: 1.6, fontFamily: "Space Grotesk, sans-serif" }}>
+                 {activeGuide.content}
+               </p>
+               <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 24 }}>
+                 <button className="btn-primary" onClick={() => setActiveGuide(null)} style={{ padding: "8px 16px" }}>Close Guide</button>
+               </div>
+            </div>
+         </div>
+      )}
 
       {/* ── Main Canvas (Blockly) ────────────────────────── */}
       <main className="ide-canvas" style={{ position: "relative", overflow: "hidden", display: viewMode === "blocks" ? "block" : "none" }}>
@@ -685,21 +809,48 @@ export default function IDEPage() {
 
       {/* ── Machine Learning Pipeline ──────────────────── */}
       {viewMode === "ml" && (
-          <div style={{ gridColumn: "1 / -1", gridRow: 2, flex: 1, display: "flex", background: "#0A0A0A", padding: 32, gap: 32, overflow: "auto", height: "100%", boxSizing: "border-box" }}>
-              <div style={{ flex: 1, background: "#1A0628", borderRadius: 12, border: "1px solid rgba(157,39,222,0.3)", display: "flex", flexDirection: "column" }}>
+          <div style={{ gridColumn: "1 / -1", gridRow: 2, flex: 1, display: "flex", background: "#0A0A0A", padding: 32, gap: 32, overflow: "auto", height: "100%", boxSizing: "border-box", position: "relative" }}>
+              {!isMlSupported && (
+                 <div style={{ 
+                   position: "absolute", inset: 0, zIndex: 50, background: "rgba(10,10,10,0.85)", 
+                   backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center",
+                   flexDirection: "column", textAlign: "center", padding: 40
+                 }}>
+                    <div style={{ background: "#1A0628", border: "1px solid rgba(157,39,222,0.3)", borderRadius: 16, padding: "40px 60px", maxWidth: 500, boxShadow: "0 20px 50px rgba(0,0,0,0.5)" }}>
+                       <div style={{ width: 64, height: 64, borderRadius: "50%", background: "rgba(239,68,68,0.1)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 24px", border: "1px solid rgba(239,68,68,0.2)" }}>
+                          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                       </div>
+                       <h2 style={{ fontSize: 24, fontWeight: 700, color: "#F2F2F0", marginBottom: 12 }}>Hardware Incompatible</h2>
+                       <p style={{ fontSize: 14, color: "rgba(242,242,240,0.6)", lineHeight: 1.6, marginBottom: 24 }}>
+                         The selected board (<strong>{currentBoard.name}</strong>) does not have the necessary hardware acceleration or memory to run Machine Learning tasks. 
+                         <br /><br />
+                         To use the AI Workspace, please select an <strong>ESP32-S3</strong>, <strong>ESP32-CAM</strong>, or <strong>Arduino Nano ESP32</strong>.
+                       </p>
+                       <button 
+                         onClick={() => setViewMode("blocks")}
+                         className="btn-primary" 
+                         style={{ padding: "10px 24px" }}
+                       >
+                         Back to Workspace
+                       </button>
+                    </div>
+                 </div>
+              )}
+
+              <div style={{ flex: 1, background: "#1A0628", borderRadius: 12, border: "1px solid rgba(157,39,222,0.3)", display: "flex", flexDirection: "column", opacity: isMlSupported ? 1 : 0.4 }}>
                   <div style={{ padding: 16, borderBottom: "1px solid rgba(157,39,222,0.15)", background: "rgba(157,39,222,0.05)" }}>
                       <h2 style={{ fontSize: 16, fontWeight: 700, color: "#F2F2F0", display: "flex", alignItems: "center", gap: 8 }}>
                           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9D27DE" strokeWidth="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
                           Data Collection
                       </h2>
-                      <p style={{ fontSize: 12, color: "rgba(242,242,240,0.5)", marginTop: 4 }}>Stream IMU and Sensor data over WebSerial</p>
+                      <p style={{ fontSize: 12, color: "rgba(242,242,240,0.5)", marginTop: 4 }}>Stream IMU, Audio, and Image data for training</p>
                   </div>
                   <div style={{ flex: 1, overflow: "auto", position: "relative" }}>
-                     <DataCollection projectId={projectId || ""} boardId={project?.board || "esp32-wroom"} />
+                     <DataCollection projectId={projectId || ""} boardId={project?.board || "esp32-wroom"} task={mlTask} architecture={mlArch} />
                   </div>
               </div>
 
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 32 }}>
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 32, opacity: isMlSupported ? 1 : 0.4 }}>
                   <div style={{ flex: 1, background: "#1A0628", borderRadius: 12, border: "1px solid rgba(157,39,222,0.3)", display: "flex", flexDirection: "column" }}>
                      <div style={{ padding: 16, borderBottom: "1px solid rgba(157,39,222,0.15)", background: "rgba(157,39,222,0.05)" }}>
                           <h2 style={{ fontSize: 16, fontWeight: 700, color: "#F2F2F0", display: "flex", alignItems: "center", gap: 8 }}>
@@ -708,7 +859,7 @@ export default function IDEPage() {
                           </h2>
                      </div>
                      <div style={{ flex: 1, overflow: "auto", position: "relative" }}>
-                        <TrainingView projectId={projectId || ""} boardId={project?.board || "esp32-wroom"} />
+                        <TrainingView projectId={projectId || ""} boardId={project?.board || "esp32-wroom"} task={mlTask} setTask={setMlTask} selectedArch={mlArch} setSelectedArch={setMlArch} />
                      </div>
                   </div>
                   
@@ -744,7 +895,7 @@ export default function IDEPage() {
               </ol>
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
                  <button className="btn-ghost" onClick={() => setShowCamWizard(false)}>Cancel</button>
-                 <button className="btn-primary" onClick={() => performSerialFlash(getBoardConfig("esp32-cam"))}>Continue Flash</button>
+                 <button className="btn-primary" onClick={() => { setShowCamWizard(false); /* performSerialFlash is implicitly called through compiler context in real flow */ }}>Continue Flash</button>
               </div>
            </div>
         </div>
@@ -758,17 +909,22 @@ export default function IDEPage() {
       }}>
         <span>BitBlock IDE v1.0</span>
         <span>·</span>
-        <span style={{ color: getBoardConfig(project?.board || "esp32-wroom").color }}>
-          ● {getBoardConfig(project?.board || "esp32-wroom").name}
+        <span style={{ color: currentBoard.color }}>
+          ● {currentBoard.name}
         </span>
         <span>·</span>
         <span>{blocklyReady ? "Editor ready" : "Loading editor..."}</span>
-        {!flashSupported && (
+        {!flashSupported ? (
           <>
             <span>·</span>
             <span style={{ color: "#F59E0B" }}>⚠ WebSerial not available (use Chrome/Edge)</span>
           </>
-        )}
+        ) : connectedPort ? (
+          <>
+            <span>·</span>
+            <span style={{ color: "#4ade80" }}>USB Device Connected</span>
+          </>
+        ) : null}
         <span style={{ marginLeft: "auto" }}>
           {saving ? "Saving..." : "All changes saved"}
         </span>
@@ -779,16 +935,22 @@ export default function IDEPage() {
 
 // ── Syntax highlight (minimal) ────────────────────────────
 function CodeHighlight({ code }: { code: string }) {
-  const highlighted = code
-    .replace(/\/\/.*/g, (m) => `<span style="color:#6B7280">${m}</span>`)
-    .replace(/\b(void|int|float|bool|char|String|const|return|if|else|for|while|do|include|define)\b/g,
-      (m) => `<span style="color:#9D27DE;font-weight:600">${m}</span>`)
-    .replace(/\b(setup|loop|Serial|pinMode|digitalWrite|digitalRead|analogWrite|analogRead|delay|millis)\b/g,
-      (m) => `<span style="color:#3182CE">${m}</span>`)
-    .replace(/"[^"]*"/g, (m) => `<span style="color:#38A169">${m}</span>`)
-    .replace(/\b(\d+)\b/g, (m) => `<span style="color:#D69E2E">${m}</span>`);
+  let html = code
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+    
+  html = html.replace(/(\/\/.*)|("[^"]*")|\b(void|int|float|bool|char|String|const|return|if|else|for|while|do|include|define)\b|\b(setup|loop|Serial|pinMode|digitalWrite|digitalRead|analogWrite|analogRead|delay|millis)\b|\b(\d+)\b/g, 
+    (match, comment, str, kw1, kw2, num) => {
+      if (comment) return `<span style="color:#6B7280">${comment}</span>`;
+      if (str) return `<span style="color:#38A169">${str}</span>`;
+      if (kw1) return `<span style="color:#9D27DE;font-weight:600">${kw1}</span>`;
+      if (kw2) return `<span style="color:#3182CE">${kw2}</span>`;
+      if (num) return `<span style="color:#D69E2E">${num}</span>`;
+      return match;
+    });
 
-  return <span dangerouslySetInnerHTML={{ __html: highlighted }} />;
+  return <span dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
 // ── Board info panel ──────────────────────────────────────

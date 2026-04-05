@@ -457,6 +457,11 @@ body {
 .blocklyScrollbarHandle {
   fill: var(--color-signal-purple) !important;
 }
+.blocklyScrollbarVertical,
+.blocklyScrollbarHorizontal,
+.blocklyFlyoutScrollbar {
+  display: none !important;
+}
 .blocklyText {
   font-family: var(--font-superstar) !important;
   font-size: 12pt !important;

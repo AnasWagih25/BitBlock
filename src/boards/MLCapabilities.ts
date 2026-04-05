@@ -6,12 +6,13 @@ export interface MLArchitecture {
   type: "classification" | "anomaly" | "detection";
   recommendedInput: "IMU" | "Audio" | "Image" | "Sensor";
   baseSizeKb: number;
+  inputResolution?: { width: number, height: number };
 }
 
 export const ML_ARCHITECTURES: Record<string, MLArchitecture> = {
-  "mobilenet_v1_0.1": { id: "mobilenet_v1_0.1", name: "MobileNetV1 INT8 (0.1)", type: "classification", recommendedInput: "Image", baseSizeKb: 140 },
-  "mobilenet_v1_0.25": { id: "mobilenet_v1_0.25", name: "MobileNetV1 INT8 (0.25)", type: "classification", recommendedInput: "Image", baseSizeKb: 450 },
-  "fomo": { id: "fomo", name: "FOMO Object Detection", type: "detection", recommendedInput: "Image", baseSizeKb: 250 },
+  "mobilenet_v1_0.1": { id: "mobilenet_v1_0.1", name: "MobileNetV1 INT8 (0.1)", type: "classification", recommendedInput: "Image", baseSizeKb: 140, inputResolution: { width: 96, height: 96 } },
+  "mobilenet_v1_0.25": { id: "mobilenet_v1_0.25", name: "MobileNetV1 INT8 (0.25)", type: "classification", recommendedInput: "Image", baseSizeKb: 450, inputResolution: { width: 96, height: 96 } },
+  "fomo": { id: "fomo", name: "FOMO Object Detection", type: "detection", recommendedInput: "Image", baseSizeKb: 250, inputResolution: { width: 96, height: 96 } },
   "cnn_1d_mfcc": { id: "cnn_1d_mfcc", name: "1D CNN on MFCC", type: "classification", recommendedInput: "Audio", baseSizeKb: 60 },
   "ds_cnn": { id: "ds_cnn", name: "DS-CNN Keyword Spotting", type: "classification", recommendedInput: "Audio", baseSizeKb: 90 },
   "cnn_1d_imu": { id: "cnn_1d_imu", name: "1D CNN on IMU (Gesture)", type: "classification", recommendedInput: "IMU", baseSizeKb: 30 },

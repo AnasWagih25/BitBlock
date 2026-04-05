@@ -1,7 +1,8 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import CassetteMascot from "../components/ui/CassetteMascot";
 import { Zap, Puzzle, CloudLightning, Usb, Cpu, Globe } from "lucide-react";
+import DemoModal from "../components/ui/DemoModal";
 
 const features = [
   {
@@ -37,10 +38,9 @@ const features = [
 ];
 
 const boards = [
-  { name: "ESP32", color: "#E53E3E", sub: "Wi-Fi + BLE" },
-  { name: "Arduino", color: "#38A169", sub: "UNO / NANO" },
-  { name: "RP2040", color: "#3182CE", sub: "Pico / Pico W" },
-  { name: "STM32", color: "#D69E2E", sub: "F1 / F4 / G0" },
+  { name: "ESP32", color: "#E53E3E", sub: "WROOM / S3 / C3 / CAM" },
+  { name: "ESP8266", color: "#3182CE", sub: "NodeMCU" },
+  { name: "Arduino", color: "#38A169", sub: "UNO / NANO / MEGA" },
 ];
 
 const stats = [
@@ -51,6 +51,7 @@ const stats = [
 ];
 
 export default function LandingPage() {
+  const [showDemo, setShowDemo] = useState(false);
   const heroRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -58,8 +59,8 @@ export default function LandingPage() {
     if (!el) return;
     const handle = (e: MouseEvent) => {
       const rect = el.getBoundingClientRect();
-      const x = ((e.clientX - rect.left) / rect.width - 0.5) * 20;
-      const y = ((e.clientY - rect.top) / rect.height - 0.5) * 10;
+      const x = ((e.clientX - rect.left) / rect.width - 0.5) * 4;
+      const y = ((e.clientY - rect.top) / rect.height - 0.5) * 2.5;
       el.style.transform = `perspective(1200px) rotateX(${-y}deg) rotateY(${x}deg)`;
     };
     const reset = () => { el.style.transform = "perspective(1200px) rotateX(0deg) rotateY(0deg)"; };
@@ -154,9 +155,12 @@ export default function LandingPage() {
               <Link to="/signup" className="btn-primary" style={{ fontSize: 15, padding: "14px 32px" }}>
                 Start Building Free →
               </Link>
-              <Link to="/login" className="btn-secondary" style={{ fontSize: 15, padding: "14px 32px" }}>
+              <button 
+                onClick={() => setShowDemo(true)}
+                className="btn-secondary" style={{ fontSize: 15, padding: "14px 32px", cursor: "pointer" }}
+              >
                 View Demo
-              </Link>
+              </button>
             </div>
             <p style={{ marginTop: 20, fontSize: 13, color: "rgba(242,242,240,0.35)" }}>
               ⚡ Chrome / Edge only (WebSerial API) · No account needed to explore
@@ -181,7 +185,7 @@ export default function LandingPage() {
           {/* Right: Mascot + minicard */}
           <div ref={heroRef} style={{
             display: "flex", flexDirection: "column", alignItems: "center",
-            transition: "transform 0.1s ease",
+            transition: "transform 0.5s cubic-bezier(0.23, 1, 0.32, 1)",
           }}>
             <CassetteMascot size={280} mood="excited" animate />
 
@@ -311,6 +315,8 @@ export default function LandingPage() {
         </div>
         <span style={{ fontSize: 12, color: "rgba(242,242,240,0.25)" }}>© 2026 BitBlock. All rights reserved.</span>
       </footer>
+
+      <DemoModal isOpen={showDemo} onClose={() => setShowDemo(false)} />
     </div>
   );
 }

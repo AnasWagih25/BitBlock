@@ -4,9 +4,14 @@ import { TASK_ARCHITECTURES, ML_ARCHITECTURES } from '../boards/MLCapabilities';
 import { db } from "../lib/firebase";
 import { collection, addDoc, serverTimestamp, doc, onSnapshot } from "firebase/firestore";
 
-export default function TrainingView({ projectId, boardId }: { projectId: string; boardId: string }) {
-  const [task, setTask] = useState<string>("gesture");
-  const [selectedArch, setSelectedArch] = useState<string>("");
+export default function TrainingView({ projectId, boardId, task, setTask, selectedArch, setSelectedArch }: { 
+  projectId: string; 
+  boardId: string;
+  task: string;
+  setTask: (t: string) => void;
+  selectedArch: string;
+  setSelectedArch: (a: string) => void;
+}) {
   const [status, setStatus] = useState<"idle"|"training"|"done">("idle");
   const [loss, setLoss] = useState(1.0);
   const [acc, setAcc] = useState(0.0);
@@ -107,6 +112,33 @@ export default function TrainingView({ projectId, boardId }: { projectId: string
               </div>
            </div>
        </div>
+
+       {currentArch && (
+            <div style={{ 
+                marginBottom: 24, padding: 16, background: "rgba(157,39,222,0.05)", borderRadius: 8, 
+                border: "1px solid rgba(157,39,222,0.15)", display: "flex", flexDirection: "column", gap: 10 
+            }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: 11, color: "rgba(242,242,240,0.4)", textTransform: "uppercase" }}>Model Requirements</span>
+                    <span style={{ fontSize: 10, background: "#9D27DE", color: "#fff", padding: "2px 6px", borderRadius: 4, fontWeight: 600 }}>{currentArch.recommendedInput} Task</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    <div style={{ display: "flex", flexDirection: "column" }}>
+                        <span style={{ fontSize: 10, color: "rgba(242,242,240,0.3)" }}>Expected Input</span>
+                        <span style={{ fontSize: 12, color: "#F2F2F0", fontWeight: 600 }}>{currentArch.recommendedInput} Data</span>
+                    </div>
+                    {currentArch.recommendedInput === 'Image' && currentArch.inputResolution && (
+                        <div style={{ display: "flex", flexDirection: "column" }}>
+                            <span style={{ fontSize: 10, color: "rgba(242,242,240,0.3)" }}>Target Resolution</span>
+                            <span style={{ fontSize: 12, color: "#F2F2F0", fontWeight: 600 }}>{currentArch.inputResolution.width} x {currentArch.inputResolution.height} px</span>
+                        </div>
+                    )}
+                </div>
+                <p style={{ fontSize: 10, color: "rgba(242,242,240,0.5)", margin: 0, fontStyle: "italic" }}>
+                    {currentArch.recommendedInput === 'Image' ? "Ensure all samples are cropped to 1:1 ratio. Our engine auto-resizes to target resolution." : "Ensure sensor stream is active before starting collection."}
+                </p>
+            </div>
+        )}
 
        <button 
            onClick={handleStartTraining} 

@@ -22,48 +22,48 @@ export default function CassetteMascot({
         return (
           <>
             {/* Eyes straight line */}
-            <rect x="32" y="42" width="12" height="6" fill="#F2F2F0" rx="3" />
-            <rect x="56" y="42" width="12" height="6" fill="#F2F2F0" rx="3" />
+            <rect x="34" y="44" width="11" height="5" fill="#F2F2F0" rx="2.5" />
+            <rect x="55" y="44" width="11" height="5" fill="#F2F2F0" rx="2.5" />
             {/* Mouth small flat */}
             <rect x="44" y="56" width="12" height="4" fill="#B94FF0" rx="2" />
             {/* Thinking processing dot */}
-            <circle cx="70" cy="36" r="3" fill="#9D27DE" className="animate-pulse" />
+            <circle cx="68" cy="36" r="2.5" fill="#9D27DE" className="animate-pulse" />
           </>
         );
       case "excited":
         return (
           <>
-            {/* Eyes > < cuter */}
-            <path d="M 32 38 L 42 45 L 32 52" stroke="#F2F2F0" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-            <path d="M 68 38 L 58 45 L 68 52" stroke="#F2F2F0" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-            {/* Mouth open shouting block */}
-            <rect x="42" y="56" width="16" height="12" fill="#B94FF0" rx="6" />
+            {/* Eyes > < */}
+            <path d="M 35 41 L 43 46 L 35 51" stroke="#F2F2F0" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+            <path d="M 65 41 L 57 46 L 65 51" stroke="#F2F2F0" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+            {/* Mouth open */}
+            <rect x="43" y="56" width="14" height="9" fill="#B94FF0" rx="4.5" />
           </>
         );
       case "idle":
         return (
           <>
-            {/* Eyes blocky round */}
-            <rect x="34" y="42" width="10" height="10" fill="#E0D8F0" rx="4" />
-            <rect x="56" y="42" width="10" height="10" fill="#E0D8F0" rx="4" />
-            {/* Mouth tiny pixel */}
-            <circle cx="50" cy="60" r="2.5" fill="#9D27DE" />
+            {/* Eyes blocky */}
+            <rect x="36" y="43" width="8" height="8" fill="#E0D8F0" rx="3" />
+            <rect x="56" y="43" width="8" height="8" fill="#E0D8F0" rx="3" />
+            {/* Mouth tiny dot */}
+            <circle cx="50" cy="58" r="2.5" fill="#9D27DE" />
           </>
         );
       case "happy":
       default:
         return (
           <>
-            {/* Eyes ^ ^ cuter & softer */}
-            <path d="M 30 48 L 38 38 L 46 48" stroke="#F2F2F0" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-            <path d="M 54 48 L 62 38 L 70 48" stroke="#F2F2F0" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-            
-            {/* Cute pink blushes */}
-            <ellipse cx="28" cy="56" rx="6" ry="3.5" fill="#EE82EE" opacity="0.6" />
-            <ellipse cx="72" cy="56" rx="6" ry="3.5" fill="#EE82EE" opacity="0.6" />
-            
-            {/* Mouth pixel smile */}
-            <path d="M 44 54 Q 50 64 56 54" stroke="#B94FF0" strokeWidth="5" strokeLinecap="round" fill="none" />
+            {/* Eyes ^^ — compact, well inside the screen frame */}
+            <path d="M 35 46 L 40 40 L 45 46" stroke="#F2F2F0" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+            <path d="M 55 46 L 60 40 L 65 46" stroke="#F2F2F0" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+
+            {/* Blushes pulled inward */}
+            <ellipse cx="33" cy="52" rx="4.5" ry="2.5" fill="#EE82EE" opacity="0.6" />
+            <ellipse cx="67" cy="52" rx="4.5" ry="2.5" fill="#EE82EE" opacity="0.6" />
+
+            {/* Smile */}
+            <path d="M 43 55 Q 50 63 57 55" stroke="#B94FF0" strokeWidth="4" strokeLinecap="round" fill="none" />
           </>
         );
     }

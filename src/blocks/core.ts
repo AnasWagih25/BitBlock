@@ -5,6 +5,152 @@ export function defineCoreBlocks(Blockly: any) {
   // since a pure C++ generator isn't included in the default blockly package
   const generator = Blockly.JavaScript || Blockly.javascriptGenerator;
 
+  // ─── Execution Flow (Hats) ────────────────────────────────────────────────
+  Blockly.Blocks["event_setup"] = {
+    init: function () {
+      this.appendDummyInput().appendField("On Setup (Run Once)");
+      this.appendStatementInput("DO").setCheck(null);
+      this.setColour("#9D27DE");
+      this.setTooltip("Runs once when the device powers on.");
+    },
+  };
+  generator.forBlock["event_setup"] = function (block: any, generator: any) {
+    const branch = generator.statementToCode(block, "DO");
+    if (branch) {
+      compiler.addSetup(branch);
+    }
+    return "";
+  };
+
+  Blockly.Blocks["event_loop"] = {
+    init: function () {
+      this.appendDummyInput().appendField("Forever Loop (Background)");
+      this.appendStatementInput("DO").setCheck(null);
+      this.setColour("#9D27DE");
+      this.setTooltip("Runs continuously in the background void loop.");
+    },
+  };
+  generator.forBlock["event_loop"] = function (block: any, generator: any) {
+    const branch = generator.statementToCode(block, "DO");
+    if (branch) {
+      compiler.addLoop(branch);
+    }
+    return "";
+  };
+
+  Blockly.Blocks["hardware_interrupt"] = {
+    init: function () {
+      this.appendValueInput("PIN").setCheck("Number").appendField("On Interrupt Pin");
+      this.appendDummyInput().appendField("Mode").appendField(new Blockly.FieldDropdown([["RISING", "RISING"], ["FALLING", "FALLING"], ["CHANGE", "CHANGE"]]), "MODE");
+      this.appendStatementInput("DO").setCheck(null);
+      this.setColour("#9D27DE");
+    },
+  };
+  generator.forBlock["hardware_interrupt"] = function (block: any, generator: any) {
+    const pin = generator.valueToCode(block, "PIN", generator.ORDER_ATOMIC) || "0";
+    const mode = block.getFieldValue("MODE");
+    const branch = generator.statementToCode(block, "DO");
+    const isrName = `isr_${pin}_${Math.random().toString(36).substring(7)}`;
+    compiler.addInclude(`void IRAM_ATTR ${isrName}() {\n${branch}\n}`);
+    compiler.addSetup(`pinMode(${pin}, INPUT_PULLUP);`);
+    compiler.addSetup(`attachInterrupt(digitalPinToInterrupt(${pin}), ${isrName}, ${mode});`);
+    return "";
+  };
+
+  // ─── Power & Sleep ────────────────────────────────────────────────────────
+  Blockly.Blocks["esp_deep_sleep"] = {
+    init: function () {
+      this.appendValueInput("TIME").setCheck("Number").appendField("Deep Sleep for (microsecs)");
+      this.setPreviousStatement(true, null);
+      this.setNextStatement(true, null);
+      this.setColour("#6B1A99");
+    },
+  };
+  generator.forBlock["esp_deep_sleep"] = function (block: any, generator: any) {
+    const time = generator.valueToCode(block, "TIME", generator.ORDER_ATOMIC) || "1000000";
+    return `ESP.deepSleep(${time});\n`;
+  };
+
+  // ─── Data Types & Arrays ──────────────────────────────────────────────────
+  Blockly.Blocks["array_create"] = {
+    init: function () {
+      this.appendDummyInput()
+        .appendField("Create Array")
+        .appendField(new Blockly.FieldDropdown([["int", "int"], ["float", "float"], ["String", "String"]]), "TYPE")
+        .appendField(new Blockly.FieldTextInput("myArray"), "NAME")
+        .appendField("[")
+        .appendField(new Blockly.FieldTextInput("10"), "SIZE")
+        .appendField("]");
+      this.setPreviousStatement(true, null);
+      this.setNextStatement(true, null);
+      this.setColour("#E53E3E");
+    },
+  };
+  generator.forBlock["array_create"] = function (block: any) {
+    const type = block.getFieldValue("TYPE");
+    const name = block.getFieldValue("NAME");
+    const size = block.getFieldValue("SIZE");
+    compiler.addGlobal(`${type} ${name}[${size}];`);
+    return "";
+  };
+
+  Blockly.Blocks["array_set"] = {
+    init: function () {
+      this.appendDummyInput().appendField("Set Array").appendField(new Blockly.FieldTextInput("myArray"), "NAME");
+      this.appendValueInput("INDEX").setCheck("Number").appendField("Index");
+      this.appendValueInput("VALUE").setCheck(null).appendField("to");
+      this.setPreviousStatement(true, null);
+      this.setNextStatement(true, null);
+      this.setColour("#E53E3E");
+    },
+  };
+  generator.forBlock["array_set"] = function (block: any, generator: any) {
+    const name = block.getFieldValue("NAME");
+    const index = generator.valueToCode(block, "INDEX", generator.ORDER_ATOMIC) || "0";
+    const value = generator.valueToCode(block, "VALUE", generator.ORDER_ATOMIC) || "0";
+    return `${name}[${index}] = ${value};\n`;
+  };
+
+  Blockly.Blocks["array_get"] = {
+    init: function () {
+      this.appendDummyInput().appendField("Get Array").appendField(new Blockly.FieldTextInput("myArray"), "NAME");
+      this.appendValueInput("INDEX").setCheck("Number").appendField("Index");
+      this.setOutput(true, null);
+      this.setColour("#E53E3E");
+    },
+  };
+  generator.forBlock["array_get"] = function (block: any, generator: any) {
+    const name = block.getFieldValue("NAME");
+    const index = generator.valueToCode(block, "INDEX", generator.ORDER_ATOMIC) || "0";
+    return [`${name}[${index}]`, generator.ORDER_ATOMIC];
+  };
+
+  // ─── Native Basic C/C++ ──────────────────────────────────────────────────
+  Blockly.Blocks["delay_microseconds"] = {
+    init: function () {
+      this.appendValueInput("TIME").setCheck("Number").appendField("Delay Microseconds");
+      this.setPreviousStatement(true, null);
+      this.setNextStatement(true, null);
+      this.setColour("#D69E2E");
+    },
+  };
+  generator.forBlock["delay_microseconds"] = function (block: any, generator: any) {
+    const time = generator.valueToCode(block, "TIME", generator.ORDER_ATOMIC) || "10";
+    return `delayMicroseconds(${time});\n`;
+  };
+
+  Blockly.Blocks["yield"] = {
+    init: function () {
+      this.appendDummyInput().appendField("Yield to OS / Watchdog");
+      this.setPreviousStatement(true, null);
+      this.setNextStatement(true, null);
+      this.setColour("#D69E2E");
+    },
+  };
+  generator.forBlock["yield"] = function () {
+    return `yield();\n`;
+  };
+
   // Digital Write block
   Blockly.Blocks["gpio_digital_write"] = {
     init() {
@@ -61,6 +207,45 @@ export function defineCoreBlocks(Blockly: any) {
     },
   };
 
+  Blockly.Blocks["gpio_analog_read"] = {
+    init() {
+      this.appendValueInput("PIN").setCheck("Number").appendField("Analog Read pin");
+      this.setOutput(true, "Number");
+      this.setColour("#9D27DE");
+      this.setTooltip("Read analog value from a pin");
+    },
+  };
+
+  Blockly.Blocks["gpio_analog_write"] = {
+    init() {
+      this.appendValueInput("PIN").setCheck("Number").appendField("PWM Write pin");
+      this.appendValueInput("VALUE").setCheck("Number").appendField("value");
+      this.setPreviousStatement(true, null);
+      this.setNextStatement(true, null);
+      this.setColour("#9D27DE");
+      this.setTooltip("Write PWM value to a pin");
+    },
+  };
+
+  Blockly.Blocks["math_map"] = {
+    init() {
+      this.appendValueInput("VAL").setCheck("Number").appendField("Map value");
+      this.appendDummyInput().appendField("from [");
+      this.appendValueInput("FROMLOW").setCheck("Number");
+      this.appendDummyInput().appendField(",");
+      this.appendValueInput("FROMHIGH").setCheck("Number");
+      this.appendDummyInput().appendField("] to [");
+      this.appendValueInput("TOLOW").setCheck("Number");
+      this.appendDummyInput().appendField(",");
+      this.appendValueInput("TOHIGH").setCheck("Number");
+      this.appendDummyInput().appendField("]");
+      this.setInputsInline(true);
+      this.setOutput(true, "Number");
+      this.setColour("#3182CE");
+      this.setTooltip("Map a number from one range to another");
+    },
+  };
+
   if (generator) {
     generator.forBlock['gpio_digital_write'] = function(block: any, generator: any) {
       const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '0';
@@ -98,17 +283,55 @@ export function defineCoreBlocks(Blockly: any) {
 
       return `Serial.${mode}(${text});\n`;
     };
+
+    generator.forBlock['gpio_analog_read'] = function(block: any, generator: any) {
+      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '0';
+      return [`analogRead(${pin})`, generator.ORDER_FUNCTION_CALL];
+    };
+
+    generator.forBlock['gpio_analog_write'] = function(block: any, generator: any) {
+      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '0';
+      const val = generator.valueToCode(block, 'VALUE', generator.ORDER_ATOMIC) || '0';
+      return `analogWrite(${pin}, ${val});\n`;
+    };
+
+    generator.forBlock['math_map'] = function(block: any, generator: any) {
+      const val = generator.valueToCode(block, 'VAL', generator.ORDER_ATOMIC) || '0';
+      const fromLow = generator.valueToCode(block, 'FROMLOW', generator.ORDER_ATOMIC) || '0';
+      const fromHigh = generator.valueToCode(block, 'FROMHIGH', generator.ORDER_ATOMIC) || '1023';
+      const toLow = generator.valueToCode(block, 'TOLOW', generator.ORDER_ATOMIC) || '0';
+      const toHigh = generator.valueToCode(block, 'TOHIGH', generator.ORDER_ATOMIC) || '255';
+      return [`map(${val}, ${fromLow}, ${fromHigh}, ${toLow}, ${toHigh})`, generator.ORDER_FUNCTION_CALL];
+    };
   }
 }
 
 export function getCoreToolboxBlocks() {
   return [
     {
+      kind: "category",
+      name: "Events & Arrays",
+      colour: "#9D27DE",
+      contents: [
+        { kind: "block", type: "event_setup" },
+        { kind: "block", type: "event_loop" },
+        { kind: "block", type: "hardware_interrupt" },
+        { kind: "block", type: "esp_deep_sleep" },
+        { kind: "block", type: "array_create" },
+        { kind: "block", type: "array_set" },
+        { kind: "block", type: "array_get" },
+        { kind: "block", type: "delay_microseconds" },
+        { kind: "block", type: "yield" }
+      ]
+    },
+    {
       kind: "category", name: "GPIO",
       contents: [
         { kind: "block", type: "gpio_pin_mode" },
         { kind: "block", type: "gpio_digital_write" },
         { kind: "block", type: "gpio_digital_read" },
+        { kind: "block", type: "gpio_analog_write" },
+        { kind: "block", type: "gpio_analog_read" },
       ],
     },
     {
