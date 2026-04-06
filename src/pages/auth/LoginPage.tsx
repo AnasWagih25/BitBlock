@@ -190,6 +190,12 @@ function friendlyError(code: string): string {
     "auth/too-many-requests": "Too many attempts. Please wait a moment.",
     "auth/popup-closed-by-user": "Sign-in popup was closed. Try again.",
     "auth/invalid-credential": "Invalid email or password.",
+    "auth/invalid-api-key": "Firebase API key is invalid in this deployment.",
+    "auth/app-not-authorized": "This app origin is not authorized in Firebase Auth settings.",
+    "auth/unauthorized-domain": "This domain is not authorized for Google sign-in in Firebase.",
+    "auth/requests-from-this-origin-are-blocked": "Requests from this domain are blocked by Firebase/Auth API key restrictions.",
+    "auth/operation-not-allowed": "This sign-in method is disabled in Firebase Auth.",
+    "auth/network-request-failed": "Network error while contacting Firebase. Check connection and CORS/domain settings.",
   };
   return map[code] || "Something went wrong. Please try again.";
 }

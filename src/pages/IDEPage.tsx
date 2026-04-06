@@ -34,6 +34,8 @@ export default function IDEPage() {
   const [compiling, setCompiling] = useState(false);
   const [compileStatus, setCompileStatus] = useState<"idle" | "compiling" | "success" | "error">("idle");
   const [compileMessage, setCompileMessage] = useState("");
+  const [firmwareReady, setFirmwareReady] = useState(false);
+  const [firmwareBinary, setFirmwareBinary] = useState<ArrayBuffer | null>(null);
   const [flashSupported, setFlashSupported] = useState(false);
   const [serialLog, setSerialLog] = useState<string[]>([]);
   const [blocklyReady, setBlocklyReady] = useState(false);
@@ -283,38 +285,106 @@ export default function IDEPage() {
   const handleCompile = async () => {
     if (!user || !projectId) return;
     setCompiling(true);
+    setFirmwareReady(false);
+    setFirmwareBinary(null);
     setCompileStatus("compiling");
     setCompileMessage("Queuing compilation job...");
     setPanelTab("code");
 
     try {
+      const board = getBoardConfig(project?.board || "esp32-wroom");
       // Create a compilation job in Firestore
       const jobRef = await addDoc(collection(db, "compilationJobs"), {
         userId: user.uid,
         projectId,
-        board: project?.board || "ESP32",
+        board: board.id,
         code: generatedCode,
         status: "queued",
         createdAt: serverTimestamp(),
       });
 
       setCompileMessage("Job queued · ID: " + jobRef.id.slice(0, 8));
+      const endpoint = (import.meta.env.VITE_COMPILER_URL as string) || "/.netlify/functions/compile-firmware";
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jobId: jobRef.id,
+          projectId,
+          boardId: board.id,
+          fqbn: board.fqbn,
+          code: generatedCode,
+          format: board.platform === "esp32" || board.platform === "esp8266" ? "bin" : (board.isAVR ? "hex" : "bin"),
+        }),
+      });
 
-      // Simulate compilation (real compilation needs Cloud Run)
-      setTimeout(() => {
-        setCompileStatus("success");
-        const sizeKb = (generatedCode.length / 1024).toFixed(1);
-        setCompileMessage(`✓ Code generation successful · ~${sizeKb}KB · Ready to flash`);
-        setCompiling(false);
-      }, 1500);
-    } catch (e) {
+      const payload = await response.json().catch(() => ({} as any));
+      if (!response.ok) {
+        throw new Error(payload?.error || `Compiler service failed (${response.status})`);
+      }
+      const artifactBase64 = payload?.artifactBase64 as string | undefined;
+      if (!artifactBase64) {
+        throw new Error("Compiler service returned no firmware artifact.");
+      }
+      const binary = Uint8Array.from(atob(artifactBase64), (c) => c.charCodeAt(0)).buffer;
+      setFirmwareBinary(binary);
+      setFirmwareReady(true);
+      setCompileStatus("success");
+      const kb = (binary.byteLength / 1024).toFixed(1);
+      setCompileMessage(`✓ Firmware built (${(payload?.format || "bin").toUpperCase()}) · ${kb}KB · Ready to flash`);
+      appendLog(`[Compile] Cloud compile complete for ${board.name}`);
+    } catch (e: any) {
       setCompileStatus("error");
-      setCompileMessage("Compilation failed. Check your blocks.");
+      setCompileMessage(`Compilation failed: ${e?.message || "Unknown error"}`);
+      appendLog(`[Error] Compile failed: ${e?.message || "Unknown error"}`);
+    } finally {
       setCompiling(false);
     }
   };
 
   const appendLog = (msg: string) => setSerialLog(l => [...l, msg]);
+
+  const ensureSerialPort = async () => {
+    // Reuse an already connected port first to avoid repeated pairing prompts.
+    if (connectedPort) return connectedPort;
+
+    // @ts-ignore
+    const rememberedPorts = await navigator.serial.getPorts();
+    if (rememberedPorts.length > 0) {
+      const rememberedPort = rememberedPorts[0];
+      setConnectedPort(rememberedPort);
+      return rememberedPort;
+    }
+
+    // @ts-ignore
+    const requestedPort = await navigator.serial.requestPort();
+    setConnectedPort(requestedPort);
+    return requestedPort;
+  };
+
+  const releaseOpenSerialPorts = async () => {
+    // Some flows keep a serial handle open; esptool-js requires closed handles before it opens.
+    try {
+      if (connectedPort?.readable) {
+        await connectedPort.close();
+      }
+    } catch {
+      // ignore close errors from stale handles
+    }
+    try {
+      // @ts-ignore
+      const ports = await navigator.serial.getPorts();
+      for (const p of ports) {
+        try {
+          if (p.readable) await p.close();
+        } catch {
+          // ignore close errors per port
+        }
+      }
+    } catch {
+      // ignore if serial api errors
+    }
+  };
 
   const handleConnectBoard = async () => {
     if (!flashSupported) {
@@ -322,15 +392,13 @@ export default function IDEPage() {
       return;
     }
     try {
-      // @ts-ignore
-      const port = await navigator.serial.requestPort();
-      await port.open({ baudRate: 115200 });
+      const port = await ensureSerialPort();
       setConnectedPort(port);
       const info = port.getInfo();
       if (info.usbVendorId) {
-        appendLog(`[WebSerial] Connected hardware: VID ${info.usbVendorId} PID ${info.usbProductId}`);
+        appendLog(`[WebSerial] Paired hardware: VID ${info.usbVendorId} PID ${info.usbProductId}`);
       } else {
-        appendLog(`[WebSerial] Connected successfully`);
+        appendLog(`[WebSerial] Device paired successfully`);
       }
     } catch (e: any) {
       console.warn("Connection cancelled or failed", e);
@@ -339,6 +407,14 @@ export default function IDEPage() {
 
   const handleFlash = async () => {
     const board = getBoardConfig(project?.board || "esp32-wroom");
+    if (!firmwareReady) {
+      setPanelTab("serial");
+      appendLog("[Error] No compiled firmware artifact available.");
+      appendLog("[Hint] Current flow generated source code only.");
+      appendLog("[Hint] Export .ino and flash from Arduino IDE.");
+      alert("No firmware binary available yet. Export .ino and flash from Arduino IDE for now.");
+      return;
+    }
 
     if (board.id === "arduino-nano-esp32" || board.id === "rp2040-pico") {
        setPanelTab("serial");
@@ -364,20 +440,26 @@ export default function IDEPage() {
     setPanelTab("serial");
     
     try {
-      // @ts-ignore
-      const port = await navigator.serial.requestPort();
-      await port.open({ baudRate: 115200 });
-      appendLog("[WebSerial] Port opened successfully");
-      
-      const dummyBin = new ArrayBuffer(0); // Stub binary data currently
+      const port = await ensureSerialPort();
+      appendLog(port.readable ? "[WebSerial] Reusing paired port" : "[WebSerial] Using remembered paired port");
 
       if (board.platform === "esp32" || board.platform === "esp8266") {
-          await flashESPBlock(port, 115200, dummyBin, appendLog);
+          if (!firmwareBinary || firmwareBinary.byteLength === 0) {
+            appendLog("[Error] Firmware artifact missing or empty.");
+            return;
+          }
+          await releaseOpenSerialPorts();
+          appendLog("[WebSerial] Cleared active serial handles for flasher");
+          await flashESPBlock(port, 115200, firmwareBinary, appendLog);
       } else if (board.isAVR) {
+          if (!port.readable) {
+            await port.open({ baudRate: 115200 });
+            appendLog("[WebSerial] Port opened successfully");
+          }
           await flashSTK500(port, "dummy_hex_data", appendLog);
       } else {
           appendLog(`[Error] Unknown protocol for board platform: ${board.platform}`);
-          await port.close();
+          if (port.readable) await port.close();
       }
 
     } catch (e: any) {
@@ -544,9 +626,9 @@ export default function IDEPage() {
         <button
           id="flash-btn"
           onClick={handleFlash}
-          disabled={compileStatus !== "success"}
+          disabled={compileStatus !== "success" || !firmwareReady}
           className="btn-secondary"
-          style={{ padding: "7px 18px", fontSize: 12, opacity: compileStatus !== "success" ? 0.4 : 1 }}
+          style={{ padding: "7px 18px", fontSize: 12, opacity: (compileStatus !== "success" || !firmwareReady) ? 0.4 : 1 }}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
@@ -616,7 +698,11 @@ export default function IDEPage() {
           <div style={{ margin: "auto 16px 16px", padding: "12px", background: "rgba(157,39,222,0.05)", borderRadius: 8, border: "1px solid rgba(157,39,222,0.1)" }}>
             <CassetteMascot size={64} mood={compileStatus === "success" ? "excited" : compileStatus === "error" ? "thinking" : "idle"} animate />
             <p style={{ fontSize: 10, color: "rgba(242,242,240,0.35)", textAlign: "center", marginTop: 6 }}>
-              {compileStatus === "success" ? "Ready to flash! 🎉" : compileStatus === "error" ? "Check your blocks" : "Drag blocks to build"}
+              {compileStatus === "success"
+                ? (firmwareReady ? "Ready to flash! 🎉" : "Code ready · Firmware build pending")
+                : compileStatus === "error"
+                ? "Check your blocks"
+                : "Drag blocks to build"}
             </p>
           </div>
         )}

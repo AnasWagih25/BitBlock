@@ -155,7 +155,9 @@ export function defineCoreBlocks(Blockly: any) {
   Blockly.Blocks["gpio_digital_write"] = {
     init() {
       this.appendValueInput("PIN").setCheck("Number").appendField("Digital Write pin");
-      this.appendValueInput("VALUE").setCheck("Boolean").appendField("value");
+      this.appendDummyInput()
+        .appendField("value")
+        .appendField(new Blockly.FieldDropdown([["HIGH", "HIGH"], ["LOW", "LOW"]]), "STATE");
       this.setPreviousStatement(true, null);
       this.setNextStatement(true, null);
       this.setColour("#9D27DE");
@@ -249,9 +251,9 @@ export function defineCoreBlocks(Blockly: any) {
   if (generator) {
     generator.forBlock['gpio_digital_write'] = function(block: any, generator: any) {
       const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '0';
-      const val = generator.valueToCode(block, 'VALUE', generator.ORDER_ATOMIC) || 'LOW';
+      const val = block.getFieldValue("STATE") || "LOW";
       compiler.addSetup(`pinMode(${pin}, OUTPUT);`);
-      return `digitalWrite(${pin}, ${val ? 'HIGH' : 'LOW'});\n`;
+      return `digitalWrite(${pin}, ${val});\n`;
     };
 
     generator.forBlock['gpio_digital_read'] = function(block: any, generator: any) {

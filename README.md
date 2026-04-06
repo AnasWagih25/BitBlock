@@ -71,3 +71,32 @@ export default defineConfig([
   },
 ])
 ```
+
+## Cloud Firmware Compile Service
+
+This project now supports real cloud firmware compilation for the IDE flash flow.
+
+### 1) Deploy compiler backend
+
+Use the `compiler-service` folder as a Cloud Run service:
+
+```bash
+cd compiler-service
+docker build -t bitblock-compiler .
+```
+
+Deploy that image to Cloud Run and copy the service URL.
+
+### 2) Configure Netlify proxy
+
+Set a Netlify environment variable:
+
+- `COMPILER_SERVICE_URL=https://<your-cloud-run-service-url>`
+
+The frontend calls `/.netlify/functions/compile-firmware`, and that function forwards compile requests to your compiler service.
+
+### 3) Configure frontend (optional override)
+
+- `VITE_COMPILER_URL=/.netlify/functions/compile-firmware`
+
+If you want to call the compiler directly during local dev, set `VITE_COMPILER_URL` to your backend URL.
