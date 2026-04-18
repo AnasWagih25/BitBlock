@@ -1,16 +1,16 @@
 import { compiler } from "../compiler/assembler";
 
-export function generateMLBlock(Blockly: any, modelDocId: string, architecture: string, customName: string, labels: string[]) {
-  const blockId = `ml_model_${modelDocId}`;
-  const safeModelName = modelDocId.toLowerCase().replace(/[^a-z0-9]/g, "_");
+export function generateMLBlock(Blockly: any, architecture: string, modelName: string, labels: string[]) {
+  const blockId = `ml_model_${architecture.toLowerCase().replace(/ /g, "_")}`;
+  const safeModelName = architecture.toLowerCase().replace(/[^a-z0-9]/g, "_");
 
   Blockly.Blocks[blockId] = {
     init() {
       this.appendDummyInput()
-          .appendField(`🤖 Run Model: ${customName}`);
+          .appendField(`Run ${modelName} Inference`);
       this.setOutput(true, "String");
-      this.setColour("#9D27DE");
-      this.setTooltip(`Runs TFLite inference for ${customName} (${architecture})`);
+      this.setColour("#2B6CB0");
+      this.setTooltip("Runs TFLite model and returns the label with highest confidence");
     }
   };
 
@@ -32,7 +32,7 @@ export function generateMLBlock(Blockly: any, modelDocId: string, architecture: 
 
     // ── Tensor arena + inference boilerplate ──
     compiler.addGlobal(`
-// ── TFLite Micro inference for: ${customName} ──
+// ── TFLite Micro inference for: ${modelName} ──
 constexpr int kTensorArenaSize_${safeModelName} = 8 * 1024;
 uint8_t tensor_arena_${safeModelName}[kTensorArenaSize_${safeModelName}];
 

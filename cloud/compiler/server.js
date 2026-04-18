@@ -96,42 +96,65 @@ app.post("/compile", (req, res) => {
     const wantedFormat = format || (fqbn.startsWith("arduino:avr") ? "hex" : "bin");
     const ext = wantedFormat === "hex" ? ".hex" : ".bin";
 
-    // Find the application binary (not bootloader/partitions)
-    let targetFile = outputFiles.find(
-      (f) =>
-        f.endsWith(ext) &&
-        !f.includes("bootloader") &&
-        !f.includes("boot_app0") &&
-        !f.includes("partition")
-    );
+    // Determine if this is an ESP target needing multi-part flash
+    const isESP = fqbn.startsWith("esp32") || fqbn.startsWith("esp8266");
+    let parts = [];
+    let artifactBase64 = "";
+    let sizeBytes = 0;
+    let targetFile = "";
 
-    // Fallback: try .elf if no .bin/.hex found
-    if (!targetFile) {
-      targetFile = outputFiles.find((f) => f.endsWith(".elf"));
-      if (targetFile) {
-        console.log(`[Compile] Warning: No ${ext} found, falling back to .elf`);
+    if (isESP) {
+      // For ESP targets, we bundle bootloader, partitions, boot_app0, and app
+      for (const file of outputFiles) {
+        if (!file.endsWith(".bin")) continue;
+
+        const data = fs.readFileSync(path.join(outputDir, file));
+        const base64 = data.toString("base64");
+        
+        let offset = 0;
+        if (file.includes("bootloader")) {
+          // ESP32-C3 and S3 bootloaders start at 0x0, others usually at 0x1000
+          offset = (fqbn.includes("esp32c3") || fqbn.includes("esp32s3") || fqbn.includes("esp32c6") || fqbn.includes("esp32h2")) ? 0x0000 : 0x1000;
+          parts.push({ offset, dataBase64: base64, name: "bootloader" });
+        } else if (file.includes("partitions")) {
+          offset = 0x8000;
+          parts.push({ offset, dataBase64: base64, name: "partitions" });
+        } else if (file.includes("boot_app0")) {
+          offset = 0xe000;
+          parts.push({ offset, dataBase64: base64, name: "boot_app0" });
+        } else {
+          // Main application binary
+          offset = 0x10000;
+          parts.push({ offset, dataBase64: base64, name: "app" });
+          artifactBase64 = base64; // Keep main app as legacy fallback
+          targetFile = file;
+        }
       }
+      
+      sizeBytes = parts.reduce((acc, p) => acc + Buffer.from(p.dataBase64, 'base64').length, 0);
+      console.log(`[Compile] Bundled ESP multi-part firmware (${parts.length} parts, ${sizeBytes} bytes total)`);
+
+    } else {
+      // Standard single-file packaging (AVR, RP2040, etc.)
+      targetFile = outputFiles.find((f) => f.endsWith(ext));
+      if (!targetFile) targetFile = outputFiles.find((f) => f.endsWith(".elf"));
+      
+      if (!targetFile) {
+        return res.status(500).json({ error: `No output file with extension ${ext} found`, files: outputFiles });
+      }
+
+      const binaryData = fs.readFileSync(path.join(outputDir, targetFile));
+      artifactBase64 = binaryData.toString("base64");
+      sizeBytes = binaryData.length;
+      console.log(`[Compile] Success: ${targetFile} (${sizeBytes} bytes)`);
     }
-
-    if (!targetFile) {
-      return res.status(500).json({
-        error: `No output file with extension ${ext} found`,
-        files: outputFiles,
-      });
-    }
-
-    // 5. Read binary and encode as base64
-    const binaryPath = path.join(outputDir, targetFile);
-    const binaryData = fs.readFileSync(binaryPath);
-    const artifactBase64 = binaryData.toString("base64");
-
-    console.log(`[Compile] Success: ${targetFile} (${binaryData.length} bytes)`);
 
     res.json({
       artifactBase64,
-      fileName: targetFile,
+      parts: isESP ? parts : undefined,
+      fileName: targetFile || "firmware",
       format: wantedFormat,
-      sizeBytes: binaryData.length,
+      sizeBytes,
     });
   } catch (e) {
     console.error("[Compile] Unexpected error:", e);

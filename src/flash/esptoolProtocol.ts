@@ -1,10 +1,10 @@
 import { ESPLoader, Transport } from "esptool-js";
 
-export async function flashESPBlock(port: any, baudRate: number, binaryData: ArrayBuffer, onProgress: (msg: string) => void) {
+export async function flashESPBlock(port: any, baudRate: number, binaryData: ArrayBuffer | { parts: {offset: number, data: Uint8Array}[] }, onProgress: (msg: string) => void) {
   let transport: Transport | null = null;
 
   try {
-    if (!binaryData || binaryData.byteLength === 0) {
+    if (!binaryData || (binaryData instanceof ArrayBuffer && binaryData.byteLength === 0) || ('parts' in binaryData && binaryData.parts.length === 0)) {
       onProgress("[Error] Firmware binary is empty. Compile firmware to .bin before flashing.");
       return false;
     }
@@ -40,9 +40,19 @@ export async function flashESPBlock(port: any, baudRate: number, binaryData: Arr
     await loader.main();
     onProgress("[Flash] Connected to ESP!");
 
-    // Convert ArrayBuffer to Uint8Array for esptool-js
-    const binary = new Uint8Array(binaryData);
-    const fileArray = [{ data: binary, address: 0x10000 }]; // Application partition offset
+    let fileArray: {data: string | Uint8Array, address: number}[] = [];
+    if (binaryData instanceof ArrayBuffer) {
+      // Legacy single-part application
+      const binary = new Uint8Array(binaryData);
+      fileArray = [{ data: binary, address: 0x10000 }];
+    } else {
+      // Multi-part flash with bootloader, partitions, and application
+      fileArray = binaryData.parts.map(p => ({
+        data: p.data,
+        address: p.offset
+      }));
+      onProgress(`[Flash] Preparing to write ${fileArray.length} partitions...`);
+    }
 
     onProgress("[Flash] Erasing & programming flash...");
     await loader.writeFlash({

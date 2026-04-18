@@ -6,7 +6,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useAppDialog } from "../contexts/DialogContext";
 import CassetteMascot from "../components/ui/CassetteMascot";
 import { BOARDS, getBoardConfig } from "../boards/registry";
-import { TASK_ARCHITECTURES, ML_ARCHITECTURES } from "../boards/MLCapabilities";
+import { TASK_ARCHITECTURES } from "../boards/MLCapabilities";
 import { compiler } from "../compiler/assembler";
 import { defineCoreBlocks, getCoreToolboxBlocks } from "../blocks/core";
 import { defineAllLibraryBlocks, getAllLibraryCategories } from "../libraries";
@@ -40,7 +40,7 @@ export default function IDEPage() {
   const [compileStatus, setCompileStatus] = useState<"idle" | "compiling" | "success" | "error">("idle");
   const [compileMessage, setCompileMessage] = useState("");
   const [firmwareReady, setFirmwareReady] = useState(false);
-  const [firmwareBinary, setFirmwareBinary] = useState<ArrayBuffer | null>(null);
+  const [firmwareBinary, setFirmwareBinary] = useState<ArrayBuffer | {parts: {offset: number, data: Uint8Array}[]} | null>(null);
   const [flashSupported, setFlashSupported] = useState(false);
   const [serialLog, setSerialLog] = useState<string[]>([]);
   const [blocklyReady, setBlocklyReady] = useState(false);
@@ -49,7 +49,7 @@ export default function IDEPage() {
   const [connectedPort, setConnectedPort] = useState<any>(null);
   const [mlTask, setMlTask] = useState<string>("gesture");
   const [mlArch, setMlArch] = useState<string>("");
-  const [savedModels, setSavedModels] = useState<any[]>([]);
+  const [trainedModel, setTrainedModel] = useState<{ blockId: string, arch: string, headerUrl: string, labels: string[] } | null>(null);
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
   const [activeGuide, setActiveGuide] = useState<{label: string, content: any} | null>(null);
   const [promptDialog, setPromptDialog] = useState<{ message: string, defaultValue: string, callback: (v: string | null) => void } | null>(null);
@@ -217,21 +217,33 @@ export default function IDEPage() {
     }
   };
 
-  // Listen to saved models for the project
+  // Listen to the latest completed ML training job
   useEffect(() => {
     if (!projectId) return;
-    const q = query(
-      collection(db, "projects", projectId, "saved_models"),
-      orderBy("createdAt", "asc")
+    const jobsQ = query(
+      collection(db, "projects", projectId, "jobs"),
+      where("type", "==", "training"),
+      where("status", "==", "completed"),
+      orderBy("startedAt", "desc"),
+      limit(1)
     );
-    const unsubscribe = onSnapshot(q, (snap) => {
-      const models = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setSavedModels(models);
+    const unsubscribe = onSnapshot(jobsQ, (snap) => {
+      if (!snap.empty) {
+        const job = snap.docs[0].data();
+        if (job.headerUrl && job.arch && job.labels) {
+          setTrainedModel({
+            blockId: `ml_model_${job.arch.toLowerCase().replace(/ /g, "_")}`,
+            arch: job.arch,
+            headerUrl: job.headerUrl,
+            labels: job.labels
+          });
+        }
+      }
     });
     return () => unsubscribe();
   }, [projectId]);
 
-  const getToolboxConfig = useCallback((models: any[], blocklyInstance: any) => {
+  const getToolboxConfig = useCallback((currentModel: any, blocklyInstance: any) => {
     const tb = {
       kind: "categoryToolbox",
       contents: [
@@ -277,36 +289,26 @@ export default function IDEPage() {
       ],
     };
 
-    if (models && models.length > 0 && blocklyInstance) {
+    if (currentModel && blocklyInstance) {
+      const archName = ML_ARCHITECTURES[currentModel.arch]?.name || currentModel.arch;
+      generateMLBlock(blocklyInstance, currentModel.arch, archName, currentModel.labels);
       tb.contents.push({ kind: "sep" } as any);
-      
-      const mlCategory = {
+      tb.contents.push({
         kind: "category",
-        name: "My AI Models",
-        contents: [] as any[]
-      };
-
-      models.forEach(model => {
-        if (model.headerUrl && model.arch && model.labels) {
-          generateMLBlock(blocklyInstance, model.id, model.arch, model.name || model.arch, model.labels);
-          mlCategory.contents.push({ kind: "block", type: `ml_model_${model.id}` });
-        }
-      });
-      
-      if (mlCategory.contents.length > 0) {
-         tb.contents.push(mlCategory as any);
-      }
+        name: "Machine Learning",
+        contents: [{ kind: "block", type: currentModel.blockId }]
+      } as any);
     }
     return tb;
   }, []);
 
-  // Update Toolbox dynamically when savedModels changes
+  // Update Toolbox dynamically when trainedModel changes
   useEffect(() => {
-    if (workspaceRef.current && Blockly && blocklyReady) {
-      const toolbox = getToolboxConfig(savedModels, Blockly);
+    if (workspaceRef.current && Blockly && trainedModel) {
+      const toolbox = getToolboxConfig(trainedModel, Blockly);
       workspaceRef.current.updateToolbox(toolbox);
     }
-  }, [savedModels, getToolboxConfig, blocklyReady]);
+  }, [trainedModel, getToolboxConfig]);
 
   // Initialize Blockly once project is loaded
   useEffect(() => {
@@ -563,28 +565,45 @@ export default function IDEPage() {
       if (!response.ok) {
         throw new Error(payload?.error || `Compiler service failed (${response.status})`);
       }
-      const artifactBase64 = payload?.artifactBase64 as string | undefined;
-      if (!artifactBase64) {
-        throw new Error("Compiler service returned no firmware artifact.");
+      if (payload?.parts && Array.isArray(payload.parts)) {
+        // Multi-part firmware (ESP32/ESP8266)
+        const parsedParts = payload.parts.map((p: any) => ({
+          offset: p.offset,
+          data: new Uint8Array(atob(p.dataBase64).split("").map(c => c.charCodeAt(0)))
+        }));
+        
+        const totalSize = parsedParts.reduce((acc: number, p: any) => acc + p.data.byteLength, 0);
+        if (totalSize < 32768) {
+          throw new Error(`Firmware bundle is too small (${totalSize} bytes) and looks invalid for app flash.`);
+        }
+        
+        setFirmwareBinary({ parts: parsedParts });
+        const kb = (totalSize / 1024).toFixed(1);
+        setCompileMessage(`✓ Firmware built (multi-part bin) · ${kb}KB · Ready to flash`);
+
+      } else {
+        // Legacy single-part firmware
+        const artifactBase64 = payload?.artifactBase64 as string | undefined;
+        if (!artifactBase64) {
+          throw new Error("Compiler service returned no firmware artifact.");
+        }
+        const fileName = String(payload?.fileName || "");
+        const lowerName = fileName.toLowerCase();
+        if (
+          lowerName.includes("boot_app0") ||
+          lowerName.includes("bootloader") ||
+          lowerName.includes("partition")
+        ) {
+          throw new Error(`Compiler returned non-application binary (${fileName}).`);
+        }
+        const binary = Uint8Array.from(atob(artifactBase64), (c) => c.charCodeAt(0)).buffer;
+        setFirmwareBinary(binary);
+        const kb = (binary.byteLength / 1024).toFixed(1);
+        setCompileMessage(`✓ Firmware built (${(payload?.format || "bin").toUpperCase()}) · ${kb}KB · ${fileName || "artifact"} · Ready to flash`);
       }
-      const fileName = String(payload?.fileName || "");
-      const lowerName = fileName.toLowerCase();
-      if (
-        lowerName.includes("boot_app0") ||
-        lowerName.includes("bootloader") ||
-        lowerName.includes("partition")
-      ) {
-        throw new Error(`Compiler returned non-application binary (${fileName}).`);
-      }
-      const binary = Uint8Array.from(atob(artifactBase64), (c) => c.charCodeAt(0)).buffer;
-      if ((board.platform === "esp32" || board.platform === "esp8266") && binary.byteLength < 32768) {
-        throw new Error(`Firmware artifact is too small (${binary.byteLength} bytes) and looks invalid for app flash.`);
-      }
-      setFirmwareBinary(binary);
+
       setFirmwareReady(true);
       setCompileStatus("success");
-      const kb = (binary.byteLength / 1024).toFixed(1);
-      setCompileMessage(`✓ Firmware built (${(payload?.format || "bin").toUpperCase()}) · ${kb}KB · ${fileName || "artifact"} · Ready to flash`);
       appendLog(`[Compile] Cloud compile complete for ${board.name}`);
       // Update compilation stat for user profile
       try {
@@ -678,7 +697,8 @@ export default function IDEPage() {
     if (board.id === "arduino-nano-esp32" || board.id === "rp2040-pico") {
        setPanelTab("serial");
        if (firmwareBinary) {
-         flashUF2(firmwareBinary, appendLog);
+         const buffer = firmwareBinary instanceof ArrayBuffer ? firmwareBinary : (firmwareBinary as any).parts[0].data.buffer;
+         flashUF2(buffer, appendLog);
        }
        return;
     }
@@ -728,7 +748,8 @@ export default function IDEPage() {
           // The compiler returns Intel HEX text for AVR boards (format: "hex").
           // firmwareBinary contains the ASCII bytes of that hex file — decode
           // it back to a string and pass directly to the STK500 flasher.
-          const hexData = new TextDecoder().decode(firmwareBinary!);
+          const buffer = firmwareBinary instanceof ArrayBuffer ? firmwareBinary : (firmwareBinary as any).parts[0].data.buffer;
+          const hexData = new TextDecoder().decode(buffer);
           await flashSTK500(port, hexData, appendLog);
       } else {
           appendLog(`[Error] No flash protocol available for platform: ${board.platform}`);

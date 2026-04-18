@@ -13,7 +13,7 @@ export default function TrainingView({ projectId, boardId, task, setTask, select
   selectedArch: string;
   setSelectedArch: (a: string) => void;
 }) {
-  const { alert, prompt } = useAppDialog();
+  const { alert } = useAppDialog();
   const [status, setStatus] = useState<"idle"|"loading_data"|"training"|"converting"|"uploading"|"done">("idle");
   const [loss, setLoss] = useState(1.0);
   const [acc, setAcc] = useState(0.0);
@@ -28,38 +28,32 @@ export default function TrainingView({ projectId, boardId, task, setTask, select
     if (!projectId) return;
     const q = query(
       collection(db, "projects", projectId, "jobs"),
-      where("type", "==", "training")
+      where("type", "==", "training"),
+      orderBy("startedAt", "desc"),
+      limit(1)
     );
     const unsub = onSnapshot(q, (snap) => {
       if (!snap.empty) {
-        // Sort in memory to avoid requiring a composite index
-        const jobs = snap.docs
-          .map(d => d.data())
-          .filter(d => d.startedAt)
-          .sort((a, b) => b.startedAt.toMillis() - a.startedAt.toMillis());
-
-        if (jobs.length > 0) {
-          const data = jobs[0];
-          if (data.status === 'loading_data') {
-            setStatus('loading_data');
-          } else if (data.status === 'training' || data.status === 'running') {
-            setStatus('training');
-            if (data.epoch !== undefined) setEpoch(data.epoch);
-            if (data.loss !== undefined) setLoss(data.loss);
-            if (data.acc !== undefined) setAcc(data.acc);
-          } else if (data.status === 'converting') {
-            setStatus('converting');
-          } else if (data.status === 'uploading') {
-            setStatus('uploading');
-          } else if (data.status === 'completed') {
-            setStatus('done');
-            setModelInfo({
-              modelUrl: data.modelUrl,
-              headerUrl: data.headerUrl,
-              labels: data.labels,
-              sizeBytes: data.modelSizeBytes,
-            });
-          }
+        const data = snap.docs[0].data();
+        if (data.status === 'loading_data') {
+          setStatus('loading_data');
+        } else if (data.status === 'training' || data.status === 'running') {
+          setStatus('training');
+          if (data.epoch !== undefined) setEpoch(data.epoch);
+          if (data.loss !== undefined) setLoss(data.loss);
+          if (data.acc !== undefined) setAcc(data.acc);
+        } else if (data.status === 'converting') {
+          setStatus('converting');
+        } else if (data.status === 'uploading') {
+          setStatus('uploading');
+        } else if (data.status === 'completed') {
+          setStatus('done');
+          setModelInfo({
+            modelUrl: data.modelUrl,
+            headerUrl: data.headerUrl,
+            labels: data.labels,
+            sizeBytes: data.modelSizeBytes,
+          });
         }
       }
     });
@@ -143,7 +137,8 @@ export default function TrainingView({ projectId, boardId, task, setTask, select
                    unsubscribe();
                } else if (data.status === 'failed') {
                    setStatus('idle');
-                   alert(data.error || "Training failed");
+                   void alert("Training failed in cloud: " + (data.error || "Unknown error"));
+                   unsubscribe();
                }
            }
        });
@@ -387,15 +382,6 @@ export default function TrainingView({ projectId, boardId, task, setTask, select
                                </p>
                            </div>
                        </div>
-                       
-                       <button
-                           onClick={handleSaveModel}
-                           style={{ width: '100%', padding: '10px', borderRadius: 6, background: '#22c55e', border: 'none', color: '#000', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 6, boxShadow: '0 4px 14px rgba(34,197,94,0.4)' }}
-                       >
-                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-                           Save Model to Library
-                       </button>
-
                        <div style={{ display: 'flex', gap: 8 }}>
                            {modelInfo?.headerUrl && (
                                <a href={modelInfo.headerUrl} download target="_blank" rel="noreferrer"

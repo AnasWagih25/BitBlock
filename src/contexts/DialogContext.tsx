@@ -1,19 +1,17 @@
 import React, { createContext, useContext, useState } from "react";
 
-type DialogType = "alert" | "confirm" | "prompt";
+type DialogType = "alert" | "confirm";
 
 interface DialogState {
   isOpen: boolean;
   type: DialogType;
   message: string;
-  defaultValue?: string;
-  resolve?: (value: any) => void;
+  resolve?: (value: boolean) => void;
 }
 
 interface DialogContextProps {
   alert: (message: string) => Promise<void>;
   confirm: (message: string) => Promise<boolean>;
-  prompt: (message: string, defaultValue?: string) => Promise<string | null>;
 }
 
 const DialogContext = createContext<DialogContextProps | null>(null);
@@ -47,19 +45,7 @@ export function DialogProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  const showPrompt = (message: string, defaultValue = ""): Promise<string | null> => {
-    return new Promise((resolve) => {
-      setDialog({
-        isOpen: true,
-        type: "prompt",
-        message,
-        defaultValue,
-        resolve: (val: string | null) => resolve(val),
-      });
-    });
-  };
-
-  const handleClose = (value: any) => {
+  const handleClose = (value: boolean) => {
     if (dialog.resolve) {
       dialog.resolve(value);
     }
@@ -67,7 +53,7 @@ export function DialogProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <DialogContext.Provider value={{ alert: showAlert, confirm: showConfirm, prompt: showPrompt }}>
+    <DialogContext.Provider value={{ alert: showAlert, confirm: showConfirm }}>
       {children}
 
       {/* Dialog Modal Renderer */}
@@ -105,45 +91,20 @@ export function DialogProvider({ children }: { children: React.ReactNode }) {
               {dialog.message}
             </p>
 
-            {dialog.type === "prompt" && (
-              <input
-                type="text"
-                autoFocus
-                defaultValue={dialog.defaultValue}
-                id="dialog-prompt-input"
-                style={{
-                  width: "100%", padding: "12px", background: "rgba(255,255,255,0.05)",
-                  border: "1px solid rgba(157,39,222,0.3)", borderRadius: 8, color: "#fff",
-                  marginBottom: 24, outline: "none", fontSize: 14
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleClose((e.target as HTMLInputElement).value);
-                  if (e.key === 'Escape') handleClose(null);
-                }}
-              />
-            )}
-
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
-              {(dialog.type === "confirm" || dialog.type === "prompt") && (
+              {dialog.type === "confirm" && (
                 <button
                   className="btn-ghost"
-                  onClick={() => handleClose(dialog.type === "prompt" ? null : false)}
+                  onClick={() => handleClose(false)}
                 >
                   Cancel
                 </button>
               )}
               <button
                 className="btn-primary"
-                onClick={() => {
-                  if (dialog.type === "prompt") {
-                    const input = document.getElementById("dialog-prompt-input") as HTMLInputElement;
-                    handleClose(input ? input.value : null);
-                  } else {
-                    handleClose(true);
-                  }
-                }}
+                onClick={() => handleClose(true)}
               >
-                {dialog.type === "confirm" ? "Yes, I'm sure" : (dialog.type === "prompt" ? "Save" : "OK")}
+                {dialog.type === "confirm" ? "Yes, I'm sure" : "OK"}
               </button>
             </div>
           </div>
