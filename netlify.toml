@@ -3,6 +3,12 @@
   publish = "dist"
 
 [[redirects]]
+  from = "/__/auth/*"
+  to = "https://bitblock-d8758.firebaseapp.com/__/auth/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200

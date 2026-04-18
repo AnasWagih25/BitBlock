@@ -8,7 +8,7 @@ const env = import.meta.env;
 
 const firebaseConfig = {
   apiKey: env.VITE_FIREBASE_API_KEY || "AIzaSyBNNSRE2_nMFegDv79zOSprn-vsyx8X2Sg",
-  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || "bitblock-d8758.firebaseapp.com",
+  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || "bitblock0.netlify.app",
   projectId: env.VITE_FIREBASE_PROJECT_ID || "bitblock-d8758",
   storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || "bitblock-d8758.firebasestorage.app",
   messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID || "409440684176",

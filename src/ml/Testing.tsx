@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
+import { useAppDialog } from '../contexts/DialogContext';
 
 export default function TestingView() {
+  const { alert } = useAppDialog();
   const [status, setStatus] = useState<"idle" | "connecting" | "testing">("idle");
   const [output, setOutput] = useState<Array<{ time: string, cls: string, conf: number }>>([]);
   const portRef = useRef<any>(null);
@@ -79,7 +81,7 @@ export default function TestingView() {
       } catch (e: any) {
           if (e.name !== 'NotFoundError' && e.name !== 'NetworkError') {
               console.error("Serial error: ", e);
-              alert("Inference serial error: " + e.message);
+              await alert("Inference serial error: " + e.message);
           }
           setStatus("idle");
       } finally {

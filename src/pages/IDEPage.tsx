@@ -1,19 +1,23 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { doc, getDoc, updateDoc, serverTimestamp, addDoc, collection } from "firebase/firestore";
+import { doc, getDoc, updateDoc, serverTimestamp, addDoc, collection, increment, getDocs, query, where, orderBy, limit, onSnapshot } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { useAuth } from "../contexts/AuthContext";
+import { useAppDialog } from "../contexts/DialogContext";
 import CassetteMascot from "../components/ui/CassetteMascot";
 import { BOARDS, getBoardConfig } from "../boards/registry";
+import { TASK_ARCHITECTURES, ML_ARCHITECTURES } from "../boards/MLCapabilities";
 import { compiler } from "../compiler/assembler";
 import { defineCoreBlocks, getCoreToolboxBlocks } from "../blocks/core";
 import { defineAllLibraryBlocks, getAllLibraryCategories } from "../libraries";
 import DataCollection from "../ml/DataCollection";
 import TrainingView from "../ml/TrainingView";
 import TestingView from "../ml/Testing";
+import { generateMLBlock } from "../ml/Deployment";
 import { flashESPBlock } from "../flash/esptoolProtocol";
 import { flashSTK500 } from "../flash/stk500Protocol";
 import { flashUF2 } from "../flash/uf2Flashing";
+
 
 // Dynamically import Blockly to avoid SSR issues
 let Blockly: any = null;
@@ -24,6 +28,7 @@ type PanelTab = typeof PANEL_TABS[number];
 export default function IDEPage() {
   const { projectId } = useParams();
   const { user } = useAuth();
+  const { alert } = useAppDialog();
   const navigate = useNavigate();
 
   const [project, setProject] = useState<any>(null);
@@ -44,18 +49,118 @@ export default function IDEPage() {
   const [connectedPort, setConnectedPort] = useState<any>(null);
   const [mlTask, setMlTask] = useState<string>("gesture");
   const [mlArch, setMlArch] = useState<string>("");
+  const [savedModels, setSavedModels] = useState<any[]>([]);
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
-  const [activeGuide, setActiveGuide] = useState<{label: string, content: string} | null>(null);
+  const [activeGuide, setActiveGuide] = useState<{label: string, content: any} | null>(null);
+  const [promptDialog, setPromptDialog] = useState<{ message: string, defaultValue: string, callback: (v: string | null) => void } | null>(null);
 
-  const QUICK_GUIDES: Record<string, string> = {
-    "GPIO": "General Purpose Input/Output blocks allow you to control raw digital voltages (HIGH/LOW) or read 12-bit analog voltages. Use pinMode blocks before reading/writing raw hardware states, or rely on our auto-mode abstractions for specific components.",
-    "Control": "Execution flow blocks natively map to C++. 'If' statements selectively execute branches. 'While' loops run until a condition breaks. The custom 'Forever Loop' natively injects recursive logic into your board's underlying void loop().",
-    "Math": "Supports standard arithmetic alongside embedded math like map()—which safely interpolates ranges (like converting 0-4095 analog reads to 0-255 PWM steps)—and constrain() which safeguards servo geometry limits.",
-    "Serial": "Allows the microcontroller to stream telemetry explicitly back to your computer. Once flashed, click the 'Serial' tab on the right to monitor blocks using print() at an asynchronous 115200 baud rate.",
-    "Timing": "Delay pauses the CPU clock ticks fully. 'Yield to OS' prevents ESP32 watchdog timers from panic-resetting the board during heavy iterative calculations. Use timeouts rather than delays when building non-blocking state machines!",
-    "Sensors": "Advanced abstraction algorithms for hardware. From precision temp/humidity (DHT22), to Time-of-Flight Lasers (VL53L0X), down to raw analog bio-sensors. Check your board's pinout diagram to ensure you connect devices to the proper I2C (SDA/SCL) or SPI lanes.",
-    "LED/Servo": "Hardware PWM lets you simulate analog voltages via extremely fast digital pulses. Servos rely on specific 50Hz timings to mechanically lock to degrees (0-180). We natively compile explicit timer attachments.",
+  const QUICK_GUIDES: Record<string, any> = {
+    "Control Logic": (
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <p>Execution flow blocks natively map to C++ control structures, directly determining how the CPU processes your logic algorithm.</p>
+        <ul style={{ paddingLeft: 20, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+          <li><b>If Statements:</b> Dynamically route CPU execution based on Boolean conditions. These evaluate natively at runtime.</li>
+          <li><b>While Loops:</b> Trap the execution thread in a continuous loop until a break condition clears. <i>Warning: Always yield to OS so the watchdog timer doesn't reset your MCU.</i></li>
+          <li><b>Forever Loops:</b> Automatically inject your logic into the board’s foundational <code>void loop()</code> structure for recursive polling.</li>
+        </ul>
+      </div>
+    ),
+    "Math & Data": (
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <p>Your microcontroller contains an Arithmetic Logic Unit (ALU) to process math cleanly. These blocks ensure your data scaling is safe and explicitly bounded.</p>
+        <ul style={{ paddingLeft: 20, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+          <li><b>Map ():</b> Interpolates linear data across ranges dynamically. For example, compressing 12-bit Analog Reads (0-4095) perfectly down to 8-bit PWM signals (0-255).</li>
+          <li><b>Constrain ():</b> Creates absolute hardware safety walls. Essential for ensuring servo motors never attempt to strip gears by driving past physical geometry limits.</li>
+        </ul>
+      </div>
+    ),
+    "Text & Serial": (
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <p>Handling strings requires CPU overhead and active memory allocation, but provides fundamental telemetry over USB for debugging.</p>
+        <ul style={{ paddingLeft: 20, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+          <li><b>Serial Print:</b> Flushes character data over the generic UART interface at an explicit <b>115,200 baud</b>. Open the Serial Monitor tab right in the IDE to view telemetry in real-time.</li>
+          <li><b>String Construction:</b> Dynamically concatenates variables. The compiler attempts to cast logic conservatively to prevent fragmentation of the tiny heap memory space.</li>
+        </ul>
+      </div>
+    ),
+    "Variables": (
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <p>Variables act as memory vaults in your microcontroller's RAM. They allow your application state to persist and mutate securely across clock cycles.</p>
+        <ul style={{ paddingLeft: 20, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+          <li><b>Global Scope:</b> Declaring a variable globally places it in generic heap space, allowing any decoupled function block to interact with and mutate the memory address consistently.</li>
+          <li><b>Type Inference:</b> Behind the scenes, the BitBlock compiler infers optimal C++ types (like doubles, floats, or explicit ints) dynamically to optimize flash footprints without manual memory casts.</li>
+        </ul>
+      </div>
+    ),
+    "Functions": (
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <p>Functions represent the ultimate tool for scalable hardware abstraction. Packaging blocks inside a function slashes the size of your final compiled binary.</p>
+        <ul style={{ paddingLeft: 20, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+          <li><b>Code Reusability:</b> Avoid ballooning the compiled execution timeline. The compiler generates the subroutine once, enabling your C++ execution pointer to jump securely rather than duplicating flash segments.</li>
+          <li><b>Arguments:</b> Pass specific sensors or arrays efficiently into execution environments with tightly coupled tracking.</li>
+        </ul>
+      </div>
+    ),
+    "GPIO": (
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <p>General Purpose Input/Output (GPIO) accesses the lowest level of physical silicon on the MCU, directly controlling pin states and monitoring voltages.</p>
+        <ul style={{ paddingLeft: 20, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+          <li><b>Digital Writes:</b> Bit-bangs pins HIGH (3.3V/5V) or LOW (0V). This is the electrical foundation of turning on LEDs or triggering remote MOSFET gates.</li>
+          <li><b>Analog Reads:</b> Accesses the internal Analog-to-Digital Converter (ADC). ESP boards read these natively at a raw 12-bit resolution, feeding precise integers back into your logic pipeline.</li>
+        </ul>
+      </div>
+    ),
+    "Timing": (
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <p>Manipulating the timeline of your firmware directly impacts overall system responsiveness and loop performance metrics.</p>
+        <ul style={{ paddingLeft: 20, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+          <li><b>Blocking Delays:</b> A hard CPU halt. While a block delays, the main thread essentially sleeps. This is easy to read, but blocks sensor pipelines.</li>
+          <li><b>Yielding to OS:</b> Boards like the ESP32 utilize a Real-Time Operating System (FreeRTOS) underneath. Highly intensive recursive calculations must occasionally 'Yield' so background tasks (like WiFi tracking) can breathe.</li>
+        </ul>
+      </div>
+    ),
+    "Sensors": (
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <p>Sensors act as the digital nervous system for your hardware array. These abstractions shield you from manually handling raw communication registers.</p>
+        <ul style={{ paddingLeft: 20, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+          <li><b>Protocol Handshakes:</b> Whether connecting an I2C or SPI device, the compiler isolates the Wire clock dependencies and initializes bus streams dynamically within the void setup.</li>
+          <li><b>Parsing Logic:</b> Custom C++ driver headers are injected directly into your artifact at compile time to parse esoteric binary streams into highly manageable floats.</li>
+        </ul>
+      </div>
+    ),
+    "Actuators": (
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <p>Translating programmatic state into raw mechanical actuation and kinetic energy relies entirely on extremely accurate sub-millisecond CPU timing.</p>
+        <ul style={{ paddingLeft: 20, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+          <li><b>Hardware PWM:</b> Simulates analog voltages by strobing a digital pin instantly. The compiler orchestrates optimal frequencies by dynamically binding to the onboard LEDC hardware sub-system.</li>
+          <li><b>Servos & NeoPixels:</b> Block libraries map arrays to Direct Memory Access (DMA) lines and explicitly configure PWM to the standardized 50Hz requirement.</li>
+        </ul>
+      </div>
+    ),
+    "AI Workspace": (
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <p>High-end modern development boards featuring extensive RAM processing capabilities natively run Machine Learning on the edge without the cloud.</p>
+        <ul style={{ paddingLeft: 20, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+          <li><b>Data Collection:</b> Route serial telemetry (IMU accelerometers, Audio signals) straight into the visual frontend analyzer matrix.</li>
+          <li><b>Cloud Model Training:</b> The platform leverages scalable infrastructure nodes to asynchronously train robust neural networks matching your topology parameters.</li>
+          <li><b>C++ Tensor Conversion:</b> Quantizes trained model weights explicitly into C++ header representations, allowing raw edge inference through natively abstracted model execution blocks.</li>
+        </ul>
+      </div>
+    )
   };
+
+  const SIDEBAR_ITEMS = [
+    { label: "Control Logic", hint: "If, loops, flow" },
+    { label: "Variables", hint: "Store and read values" },
+    { label: "Functions", hint: "Reusable block code" },
+    { label: "Math & Data", hint: "Numbers and scaling" },
+    { label: "Text & Serial", hint: "Strings and printing" },
+    { label: "GPIO", hint: "Digital and Analog pins" },
+    { label: "Timing", hint: "Delays and OS yielding" },
+    { label: "Sensors", hint: "DHT, IMU, Distance" },
+    { label: "Actuators", hint: "LEDs, PWM, Motors" },
+    { label: "AI Workspace", hint: "Machine Learning tasks" }
+  ];
 
   const workspaceRef = useRef<any>(null);
   const blocklyDivRef = useRef<HTMLDivElement>(null);
@@ -69,10 +174,31 @@ export default function IDEPage() {
     setFlashSupported("serial" in navigator);
   }, []);
 
+  // Auto-sync ML task & architecture when board changes
+  useEffect(() => {
+    if (!currentBoard.mlSupport || currentBoard.supportedMLTasks.length === 0) return;
+    const firstTask = currentBoard.supportedMLTasks[0];
+    setMlTask(firstTask);
+    const archs = TASK_ARCHITECTURES[firstTask as keyof typeof TASK_ARCHITECTURES] || [];
+    setMlArch(archs.length > 0 ? archs[0] : "");
+  }, [currentBoard.id]);
+
   useEffect(() => {
     if (!projectId || !user) return;
     fetchProject();
   }, [projectId, user]);
+
+  // Handle automatic Blockly workspace resizing when container flex expands/shrinks
+  useEffect(() => {
+    if (!blocklyReady || !workspaceRef.current || !blocklyDivRef.current) return;
+    const observer = new ResizeObserver(() => {
+      if (Blockly && workspaceRef.current) {
+        Blockly.svgResize(workspaceRef.current);
+      }
+    });
+    observer.observe(blocklyDivRef.current);
+    return () => observer.disconnect();
+  }, [blocklyReady]);
 
   const fetchProject = async () => {
     if (!projectId) return;
@@ -83,6 +209,7 @@ export default function IDEPage() {
       const data = snap.data();
       if (data.ownerId !== user?.uid) { navigate("/dashboard"); return; }
       setProject({ id: snap.id, ...data });
+
     } catch (e) {
       console.error(e);
     } finally {
@@ -90,11 +217,102 @@ export default function IDEPage() {
     }
   };
 
+  // Listen to saved models for the project
+  useEffect(() => {
+    if (!projectId) return;
+    const q = query(
+      collection(db, "projects", projectId, "saved_models"),
+      orderBy("createdAt", "asc")
+    );
+    const unsubscribe = onSnapshot(q, (snap) => {
+      const models = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setSavedModels(models);
+    });
+    return () => unsubscribe();
+  }, [projectId]);
+
+  const getToolboxConfig = useCallback((models: any[], blocklyInstance: any) => {
+    const tb = {
+      kind: "categoryToolbox",
+      contents: [
+        ...getCoreToolboxBlocks(),
+        {
+          kind: "category", name: "Control",
+          contents: [
+            { kind: "block", type: "controls_if" },
+            { kind: "block", type: "controls_whileUntil" },
+            { kind: "block", type: "controls_for" },
+            { kind: "block", type: "controls_forEach" },
+            { kind: "block", type: "controls_repeat_ext" },
+          ],
+        },
+        {
+          kind: "category", name: "Math",
+          contents: [
+            { kind: "block", type: "math_number" },
+            { kind: "block", type: "math_arithmetic" },
+            { kind: "block", type: "math_modulo" },
+            { kind: "block", type: "math_random_int" },
+            { kind: "block", type: "math_constrain" },
+            { kind: "block", type: "math_map" },
+          ],
+        },
+        {
+          kind: "category", name: "Text",
+          contents: [
+            { kind: "block", type: "text" },
+            { kind: "block", type: "text_join" },
+            { kind: "block", type: "text_print" },
+            { kind: "block", type: "text_length" },
+          ],
+        },
+        {
+          kind: "category", name: "Variables", custom: "VARIABLE",
+        },
+        {
+          kind: "category", name: "Functions", custom: "PROCEDURE",
+        },
+        { kind: "sep" },
+        ...getAllLibraryCategories(),
+      ],
+    };
+
+    if (models && models.length > 0 && blocklyInstance) {
+      tb.contents.push({ kind: "sep" } as any);
+      
+      const mlCategory = {
+        kind: "category",
+        name: "My AI Models",
+        contents: [] as any[]
+      };
+
+      models.forEach(model => {
+        if (model.headerUrl && model.arch && model.labels) {
+          generateMLBlock(blocklyInstance, model.id, model.arch, model.name || model.arch, model.labels);
+          mlCategory.contents.push({ kind: "block", type: `ml_model_${model.id}` });
+        }
+      });
+      
+      if (mlCategory.contents.length > 0) {
+         tb.contents.push(mlCategory as any);
+      }
+    }
+    return tb;
+  }, []);
+
+  // Update Toolbox dynamically when savedModels changes
+  useEffect(() => {
+    if (workspaceRef.current && Blockly && blocklyReady) {
+      const toolbox = getToolboxConfig(savedModels, Blockly);
+      workspaceRef.current.updateToolbox(toolbox);
+    }
+  }, [savedModels, getToolboxConfig, blocklyReady]);
+
   // Initialize Blockly once project is loaded
   useEffect(() => {
-    if (!project || !blocklyDivRef.current || blocklyReady) return;
+    if (loading || !project || !blocklyDivRef.current || blocklyReady) return;
     initBlockly();
-  }, [project]);
+  }, [project, loading]);
 
   const initBlockly = async () => {
     if (workspaceRef.current) return; // Prevent double injection
@@ -106,6 +324,11 @@ export default function IDEPage() {
       const jsMod = await import("blockly/javascript");
       Blockly.javascriptGenerator = jsMod.javascriptGenerator;
       Blockly.JavaScript = jsMod.javascriptGenerator;
+
+      // Custom variable prompt
+      Blockly.dialog.setPrompt((message: string, defaultValue: string, callback: (value: string | null) => void) => {
+        setPromptDialog({ message, defaultValue, callback });
+      });
 
       // Custom theme
       const theme = Blockly.Theme.defineTheme("bitblock", {
@@ -144,57 +367,55 @@ export default function IDEPage() {
         },
       });
 
-      const toolbox = {
-        kind: "categoryToolbox",
-        contents: [
-          ...getCoreToolboxBlocks(),
-          {
-            kind: "category", name: "Control",
-            contents: [
-              { kind: "block", type: "controls_if" },
-              { kind: "block", type: "controls_whileUntil" },
-              { kind: "block", type: "controls_for" },
-              { kind: "block", type: "controls_forEach" },
-              { kind: "block", type: "controls_repeat_ext" },
-            ],
-          },
-          {
-            kind: "category", name: "Math",
-            contents: [
-              { kind: "block", type: "math_number" },
-              { kind: "block", type: "math_arithmetic" },
-              { kind: "block", type: "math_modulo" },
-              { kind: "block", type: "math_random_int" },
-              { kind: "block", type: "math_constrain" },
-              { kind: "block", type: "math_map" },
-            ],
-          },
-          {
-            kind: "category", name: "Text",
-            contents: [
-              { kind: "block", type: "text" },
-              { kind: "block", type: "text_join" },
-              { kind: "block", type: "text_print" },
-              { kind: "block", type: "text_length" },
-            ],
-          },
-          {
-            kind: "category", name: "Variables", custom: "VARIABLE",
-          },
-          {
-            kind: "category", name: "Functions", custom: "PROCEDURE",
-          },
-          { kind: "sep" },
-          ...getAllLibraryCategories(),
-        ],
-      };
-
       // Define default and custom blocks
       defineCoreBlocks(Blockly);
       defineAllLibraryBlocks(Blockly);
 
+      // Load installed marketplace blocks for this user
+      if (user) {
+        try {
+          const installedSnap = await getDocs(collection(db, "users", user.uid, "installedBlocks"));
+          const installedIds = installedSnap.docs.map(d => d.id);
+          
+          for (const blockId of installedIds) {
+            try {
+              const mpSnap = await getDoc(doc(db, "marketplace", blockId));
+              if (!mpSnap.exists()) continue;
+              const mpData = mpSnap.data();
+              
+              // Register the block definition if it has blockJSON
+              if (mpData.blockJSON) {
+                const blockDef = typeof mpData.blockJSON === 'string' ? JSON.parse(mpData.blockJSON) : mpData.blockJSON;
+                Blockly.Blocks[blockDef.type] = {
+                  init() { this.jsonInit(blockDef); }
+                };
+                
+                // Register the code generator if provided
+                if (mpData.generatorCode) {
+                  const gen = Blockly.javascriptGenerator || Blockly.JavaScript;
+                  try {
+                    const genFn = new Function('block', 'generator', mpData.generatorCode);
+                    gen.forBlock[blockDef.type] = function(block: any) {
+                      return genFn(block, gen);
+                    };
+                  } catch (genErr) {
+                    console.warn(`Failed to parse generator for marketplace block ${blockId}:`, genErr);
+                  }
+                }
+                
+                console.log(`[Marketplace] Loaded block: ${mpData.name || blockId}`);
+              }
+            } catch (blockErr) {
+              console.warn(`Failed to load marketplace block ${blockId}:`, blockErr);
+            }
+          }
+        } catch (err) {
+          console.warn("Could not load installed marketplace blocks:", err);
+        }
+      }
+
       workspaceRef.current = Blockly.inject(blocklyDivRef.current, {
-        toolbox,
+        toolbox: getToolboxConfig(trainedModel, Blockly),
         theme,
         trashcan: true,
         zoom: { controls: true, wheel: true, startScale: 0.9, maxScale: 2, minScale: 0.4, scaleSpeed: 1.1 },
@@ -303,9 +524,28 @@ export default function IDEPage() {
         createdAt: serverTimestamp(),
       });
 
+      // Fetch ML header if needed
+      const compileHeaders: Record<string, string> = {};
+      if (trainedModel?.headerUrl && generatedCode.includes(`${trainedModel.blockId}`)) {
+        setCompileMessage("Fetching ML model weights...");
+        try {
+          const hdrRes = await fetch(trainedModel.headerUrl);
+          if (hdrRes.ok) {
+            const safeModelName = trainedModel.arch.toLowerCase().replace(/[^a-z0-9]/g, "_");
+            compileHeaders[`${safeModelName}_model_data.h`] = await hdrRes.text();
+          }
+        } catch (err) {
+          console.warn("Failed to fetch ML header", err);
+        }
+      }
+
       setCompileMessage("Job queued · ID: " + jobRef.id.slice(0, 8));
       const endpoint = (import.meta.env.VITE_COMPILER_URL as string) || "/.netlify/functions/compile-firmware";
-      const response = await fetch(endpoint, {
+      // For local dev, call Cloud Run directly since Netlify functions aren't available
+      const compileUrl = endpoint === "/.netlify/functions/compile-firmware" && window.location.hostname === "localhost"
+        ? "https://bitblock-compiler-409440684176.us-central1.run.app/compile"
+        : endpoint;
+      const response = await fetch(compileUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -315,6 +555,7 @@ export default function IDEPage() {
           fqbn: board.fqbn,
           code: generatedCode,
           format: board.platform === "esp32" || board.platform === "esp8266" ? "bin" : (board.isAVR ? "hex" : "bin"),
+          headers: compileHeaders,
         }),
       });
 
@@ -326,13 +567,31 @@ export default function IDEPage() {
       if (!artifactBase64) {
         throw new Error("Compiler service returned no firmware artifact.");
       }
+      const fileName = String(payload?.fileName || "");
+      const lowerName = fileName.toLowerCase();
+      if (
+        lowerName.includes("boot_app0") ||
+        lowerName.includes("bootloader") ||
+        lowerName.includes("partition")
+      ) {
+        throw new Error(`Compiler returned non-application binary (${fileName}).`);
+      }
       const binary = Uint8Array.from(atob(artifactBase64), (c) => c.charCodeAt(0)).buffer;
+      if ((board.platform === "esp32" || board.platform === "esp8266") && binary.byteLength < 32768) {
+        throw new Error(`Firmware artifact is too small (${binary.byteLength} bytes) and looks invalid for app flash.`);
+      }
       setFirmwareBinary(binary);
       setFirmwareReady(true);
       setCompileStatus("success");
       const kb = (binary.byteLength / 1024).toFixed(1);
-      setCompileMessage(`✓ Firmware built (${(payload?.format || "bin").toUpperCase()}) · ${kb}KB · Ready to flash`);
+      setCompileMessage(`✓ Firmware built (${(payload?.format || "bin").toUpperCase()}) · ${kb}KB · ${fileName || "artifact"} · Ready to flash`);
       appendLog(`[Compile] Cloud compile complete for ${board.name}`);
+      // Update compilation stat for user profile
+      try {
+        await updateDoc(doc(db, "users", user.uid), { compilationCount: increment(1) });
+      } catch (err) {
+         console.warn("Failed to increment compilation count", err);
+      }
     } catch (e: any) {
       setCompileStatus("error");
       setCompileMessage(`Compilation failed: ${e?.message || "Unknown error"}`);
@@ -388,7 +647,7 @@ export default function IDEPage() {
 
   const handleConnectBoard = async () => {
     if (!flashSupported) {
-      alert("WebSerial is not supported in your browser.\\nPlease use Chrome or Edge.");
+      await alert("WebSerial is not supported in your browser.\n\nPlease use Chrome or Edge.");
       return;
     }
     try {
@@ -412,18 +671,20 @@ export default function IDEPage() {
       appendLog("[Error] No compiled firmware artifact available.");
       appendLog("[Hint] Current flow generated source code only.");
       appendLog("[Hint] Export .ino and flash from Arduino IDE.");
-      alert("No firmware binary available yet. Export .ino and flash from Arduino IDE for now.");
+      await alert("No firmware binary available yet. Export .ino and flash from Arduino IDE for now.");
       return;
     }
 
     if (board.id === "arduino-nano-esp32" || board.id === "rp2040-pico") {
        setPanelTab("serial");
-       flashUF2(appendLog);
+       if (firmwareBinary) {
+         flashUF2(firmwareBinary, appendLog);
+       }
        return;
     }
 
     if (!flashSupported) {
-      alert("WebSerial is not supported in your browser.\nPlease use Chrome or Edge.");
+      await alert("WebSerial is not supported in your browser.\n\nPlease use Chrome or Edge.");
       return;
     }
     
@@ -441,25 +702,37 @@ export default function IDEPage() {
     
     try {
       const port = await ensureSerialPort();
-      appendLog(port.readable ? "[WebSerial] Reusing paired port" : "[WebSerial] Using remembered paired port");
+      appendLog("[WebSerial] Port acquired for flashing");
+
+      if (!firmwareBinary || firmwareBinary.byteLength === 0) {
+        appendLog("[Error] Firmware artifact missing or empty.");
+        return;
+      }
 
       if (board.platform === "esp32" || board.platform === "esp8266") {
-          if (!firmwareBinary || firmwareBinary.byteLength === 0) {
-            appendLog("[Error] Firmware artifact missing or empty.");
-            return;
-          }
-          await releaseOpenSerialPorts();
-          appendLog("[WebSerial] Cleared active serial handles for flasher");
+          // esptool-js Transport handles port.open() internally,
+          // flashESPBlock now closes the port first before opening via Transport.
+          appendLog(`[Flash] Starting ESP flash for ${board.name}...`);
           await flashESPBlock(port, 115200, firmwareBinary, appendLog);
       } else if (board.isAVR) {
-          if (!port.readable) {
-            await port.open({ baudRate: 115200 });
-            appendLog("[WebSerial] Port opened successfully");
+          // STK500 protocol needs the port; close any existing streams first
+          // so stk500Protocol can open fresh reader/writer handles.
+          try {
+            if (port.readable || port.writable) {
+              await port.close();
+            }
+          } catch {
+            // already closed — that's fine
           }
-          await flashSTK500(port, "dummy_hex_data", appendLog);
+          appendLog(`[Flash] Starting AVR/STK500 flash for ${board.name}...`);
+          // The compiler returns Intel HEX text for AVR boards (format: "hex").
+          // firmwareBinary contains the ASCII bytes of that hex file — decode
+          // it back to a string and pass directly to the STK500 flasher.
+          const hexData = new TextDecoder().decode(firmwareBinary!);
+          await flashSTK500(port, hexData, appendLog);
       } else {
-          appendLog(`[Error] Unknown protocol for board platform: ${board.platform}`);
-          if (port.readable) await port.close();
+          appendLog(`[Error] No flash protocol available for platform: ${board.platform}`);
+          appendLog("[Hint] Export the .ino file and flash using Arduino IDE.");
       }
 
     } catch (e: any) {
@@ -665,15 +938,7 @@ export default function IDEPage() {
 
         {sidebarExpanded && (
           <div style={{ paddingBottom: 16 }}>
-            {[
-              { label: "GPIO", hint: "Digital/Analog pins", icon: "zap" },
-              { label: "Control", hint: "If, loops, logic", icon: "activity" },
-              { label: "Math", hint: "Numbers, arithmetic", icon: "hash" },
-              { label: "Serial", hint: "Serial.print()", icon: "cpu" },
-              { label: "Timing", hint: "Delay, millis", icon: "clock" },
-              { label: "Sensors", hint: "DHT, US, IMU", icon: "radio" },
-              { label: "LED/Servo", hint: "NeoPixel, PWM", icon: "sun" },
-            ].map((item) => (
+            {SIDEBAR_ITEMS.map((item) => (
               <div key={item.label} 
                 onClick={() => setActiveGuide({ label: item.label, content: QUICK_GUIDES[item.label] })}
                 style={{
@@ -685,7 +950,7 @@ export default function IDEPage() {
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <div>
-                    <p style={{ fontSize: 12, fontWeight: 600, color: "#9D27DE" }}>{item.label}</p>
+                    <p style={{ fontSize: 12, fontWeight: 600, color: "#9D27DE", fontFamily: "Superstar, fantasy", letterSpacing: "0.05em" }}>{item.label}</p>
                     <p style={{ fontSize: 10, color: "rgba(242,242,240,0.4)" }}>{item.hint}</p>
                   </div>
                 </div>
@@ -981,10 +1246,53 @@ export default function IDEPage() {
               </ol>
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
                  <button className="btn-ghost" onClick={() => setShowCamWizard(false)}>Cancel</button>
-                 <button className="btn-primary" onClick={() => { setShowCamWizard(false); /* performSerialFlash is implicitly called through compiler context in real flow */ }}>Continue Flash</button>
+                 <button className="btn-primary" onClick={() => performSerialFlash(getBoardConfig("esp32-cam"))}>Continue Flash</button>
               </div>
            </div>
         </div>
+      )}
+
+      {/* Custom Variable Prompt Dialog */}
+      {promptDialog && (
+         <div style={{ position: "fixed", inset: 0, zIndex: 300, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)" }}
+              onClick={() => { promptDialog.callback(null); setPromptDialog(null); }}
+         >
+            <div style={{ background: "#12031C", border: "1px solid #9D27DE", borderRadius: 12, padding: 32, width: 400, maxWidth: "90%", boxShadow: "0 24px 50px rgba(0,0,0,0.5)" }}
+                 onClick={(e) => e.stopPropagation()}
+            >
+               <h2 style={{ color: "#F2F2F0", fontWeight: 700, fontSize: 18, marginBottom: 16 }}>
+                 {promptDialog.message}
+               </h2>
+               <input
+                 type="text"
+                 className="input"
+                 defaultValue={promptDialog.defaultValue}
+                 style={{ width: "100%", boxSizing: "border-box" }}
+                 onKeyDown={(e) => {
+                   if (e.key === "Enter") {
+                     promptDialog.callback(e.currentTarget.value);
+                     setPromptDialog(null);
+                   } else if (e.key === "Escape") {
+                     promptDialog.callback(null);
+                     setPromptDialog(null);
+                   }
+                 }}
+                 ref={(input) => input && setTimeout(() => input.focus(), 10)}
+               />
+               <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, marginTop: 24 }}>
+                 <button className="btn-secondary" onClick={() => { promptDialog.callback(null); setPromptDialog(null); }}>
+                   Cancel
+                 </button>
+                 <button className="btn-primary" onClick={(e) => {
+                   const val = (e.currentTarget.parentElement?.previousElementSibling as HTMLInputElement).value;
+                   promptDialog.callback(val);
+                   setPromptDialog(null);
+                 }}>
+                   OK
+                 </button>
+               </div>
+            </div>
+         </div>
       )}
 
       {/* ── Status Bar ───────────────────────────────────── */}

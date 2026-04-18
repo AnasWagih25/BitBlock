@@ -20,6 +20,7 @@ interface AuthContextType {
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
+  updateUserProfile: (updates: { displayName?: string; photoURL?: string }) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -27,11 +28,25 @@ const AuthContext = createContext<AuthContextType | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [userKey, setUserKey] = useState(0);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
-      setUser(u);
-      setLoading(false);
+      if (u) {
+        // Fetch the absolute source of truth from Firestore to bypass Auth provider name overwrites 
+        getDoc(doc(db, "users", u.uid)).then(snap => {
+          const dbName = snap.exists() ? snap.data().displayName : null;
+          const dbPhoto = snap.exists() ? snap.data().photoURL : null;
+          setUser({ uid: u.uid, email: u.email, displayName: dbName || u.displayName, photoURL: dbPhoto || u.photoURL } as User);
+          setLoading(false);
+        }).catch(() => {
+          setUser({ uid: u.uid, email: u.email, displayName: u.displayName, photoURL: u.photoURL } as User);
+          setLoading(false);
+        });
+      } else {
+        setUser(null);
+        setLoading(false);
+      }
     });
     return unsubscribe;
   }, []);
@@ -76,8 +91,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await sendPasswordResetEmail(auth, email);
   };
 
+  const updateUserProfile = async (updates: { displayName?: string; photoURL?: string }) => {
+    if (!auth.currentUser) return;
+    
+    // Safely update Firebase Auth state (runs seamlessly without firing destructive refresh)
+    await updateProfile(auth.currentUser, updates);
+    
+    // Explicitly set a pure JavaScript object forcing React to recognize the state change instantly.
+    setUser(prev => prev ? { ...prev, ...updates } as User : null);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, signUp, signIn, signInWithGoogle, signOut, resetPassword }}>
+    <AuthContext.Provider value={{ user, loading, signUp, signIn, signInWithGoogle, signOut, resetPassword, updateUserProfile }}>
       {children}
     </AuthContext.Provider>
   );

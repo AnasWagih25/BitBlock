@@ -6,7 +6,7 @@ exports.handler = async (event) => {
     };
   }
 
-  const compilerServiceUrl = process.env.COMPILER_SERVICE_URL;
+  const compilerServiceUrl = process.env.COMPILER_SERVICE_URL || "https://bitblock-compiler-409440684176.us-central1.run.app";
   if (!compilerServiceUrl) {
     return {
       statusCode: 500,

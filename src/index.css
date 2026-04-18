@@ -403,14 +403,16 @@ body {
   grid-row: 3;
 }
 
-/* ── Blockly Overrides for 8-Bit Theme ────────────────────────────────────── */
+/* ── Blockly Overrides for 8-Bit Theme (Blockly v12 class names) ──────────── */
 .blocklyMainBackground {
   fill: #0A0A0A !important;
 }
 .blocklyWorkspace {
   background: #0A0A0A !important;
 }
-.blocklyToolboxDiv {
+
+/* Toolbox container */
+.blocklyToolbox {
   background-color: var(--color-surface-2) !important;
   border-right: 2px solid var(--color-border) !important;
   padding: 16px 8px !important;
@@ -418,7 +420,9 @@ body {
   font-size: 16px !important;
   color: var(--color-chalk-white) !important;
 }
-.blocklyTreeRow {
+
+/* Category rows */
+.blocklyToolboxCategory {
   margin-bottom: 8px !important;
   padding: 8px 12px !important;
   border-radius: var(--radius-sm);
@@ -427,22 +431,24 @@ body {
   line-height: normal !important;
   border-left: none !important;
 }
-.blocklyTreeRow:hover {
+.blocklyToolboxCategory:not(.blocklyToolboxSelected):hover {
   background-color: rgba(157, 39, 222, 0.15) !important;
   color: var(--color-chalk-white) !important;
 }
-.blocklyTreeSelected .blocklyTreeRow {
+.blocklyToolboxSelected {
   background-color: var(--color-signal-purple) !important;
   color: var(--color-chalk-white) !important;
 }
 
-/* Hide the ugly default category icons (the color coded chunks) */
-.blocklyTreeIcon {
+/* Hide the default category icons */
+.blocklyToolboxCategoryIcon {
   display: none !important;
 }
 
-.blocklyTreeLabel {
+/* Category label text — Superstar font */
+.blocklyToolboxCategoryLabel {
   font-family: var(--font-superstar) !important;
+  font: 16px var(--font-superstar) !important;
   font-weight: normal !important;
   letter-spacing: normal !important;
 }

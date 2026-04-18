@@ -53,6 +53,12 @@ service cloud.firestore {
         )) || isAdmin();
         
       allow delete: if false; // accounts are not deletable via client
+
+      // ── Installed Blocks (subcollection) ──────────────────
+      // Users can manage their own installed marketplace blocks.
+      match /installedBlocks/{blockId} {
+        allow read, write: if isOwner(userId);
+      }
     }
 
     // ── Projects ─────────────────────────────────────────
@@ -74,6 +80,29 @@ service cloud.firestore {
         && request.resource.data.ownerId == resource.data.ownerId; // cannot transfer ownership
 
       allow delete: if isOwner(resource.data.ownerId) || isAdmin();
+
+      // ── ML Samples (subcollection) ───────────────────────
+      // Project owner can CRUD their own training data samples.
+      match /ml_samples/{sampleId} {
+        allow read, write: if isSignedIn()
+          && isOwner(get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId);
+        allow create: if isSignedIn()
+          && isOwner(get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId);
+        allow delete: if isSignedIn()
+          && isOwner(get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId);
+      }
+
+      // ── ML Training Jobs (subcollection) ─────────────────
+      // Project owner can create and read training jobs.
+      // Only the backend (Admin SDK, bypassing rules) can update job progress/status.
+      match /jobs/{jobId} {
+        allow read: if isSignedIn()
+          && isOwner(get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId);
+        allow create: if isSignedIn()
+          && isOwner(get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId);
+        allow update: if false; // Only backend service updates
+        allow delete: if false;
+      }
     }
 
     // ── Compilation Jobs ─────────────────────────────────
@@ -111,7 +140,11 @@ service cloud.firestore {
       allow update: if (isSignedIn() && isOwner(resource.data.authorId)
           && request.resource.data.authorId == resource.data.authorId
           && request.resource.data.verified == resource.data.verified) // cannot self-verify
-        || isAdmin();
+        || isAdmin()
+        // Allow any signed-in user to increment downloads only
+        || (isSignedIn()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['downloads'])
+          && request.resource.data.downloads == resource.data.downloads + 1);
 
       allow delete: if isOwner(resource.data.authorId) || isAdmin();
     }

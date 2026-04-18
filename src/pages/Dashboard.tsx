@@ -2,10 +2,11 @@ import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   collection, query, where, getDocs,
-  addDoc, serverTimestamp, deleteDoc, doc
+  addDoc, serverTimestamp, deleteDoc, doc, updateDoc, increment
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { useAuth } from "../contexts/AuthContext";
+import { useAppDialog } from "../contexts/DialogContext";
 import CassetteMascot from "../components/ui/CassetteMascot";
 
 interface Project {
@@ -21,6 +22,7 @@ import { BOARDS } from "../boards/registry";
 
 export default function Dashboard() {
   const { user, signOut } = useAuth();
+  const { confirm } = useAppDialog();
   const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,6 +74,9 @@ export default function Dashboard() {
         updatedAt: serverTimestamp(),
         blocksXml: "",
       });
+      await updateDoc(doc(db, "users", user.uid), {
+        projectCount: increment(1)
+      });
       setShowNew(false);
       setNewName("");
       navigate(`/ide/${ref.id}`);
@@ -85,8 +90,15 @@ export default function Dashboard() {
   const deleteProject = async (id: string, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!confirm("Delete this project? This cannot be undone.")) return;
+    if (!user) return;
+    
+    const isConfirmed = await confirm("Delete this project? This cannot be undone.");
+    if (!isConfirmed) return;
+    
     await deleteDoc(doc(db, "projects", id));
+    await updateDoc(doc(db, "users", user.uid), {
+      projectCount: increment(-1)
+    });
     setProjects((p) => p.filter((x) => x.id !== id));
   };
 

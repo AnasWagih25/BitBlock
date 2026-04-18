@@ -1,102 +1,156 @@
-# React + TypeScript + Vite
+# BITBLOCK
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Visual embedded IDE for makers, students, and hardware teams.  
+Build firmware with drag-and-drop blocks, compile in the cloud, and flash directly from the browser.
 
-Currently, two official plugins are available:
+## Why BITBLOCK
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Block-based programming with generated Arduino/C++ output
+- Cloud firmware compilation via `arduino-cli` on Cloud Run
+- Browser-based flashing flow (ESP WebSerial + UF2 guidance)
+- Multi-board support with board-aware compiler settings
+- Firebase auth, project persistence, and user profiles
+- Built-in ML pipeline surface (data collection, training, testing views)
 
-## React Compiler
+## Platform Capabilities
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### Visual IDE
 
-## Expanding the ESLint configuration
+- Blockly workspace with custom theme and toolbox
+- Real-time code generation and syntax-highlight preview
+- Auto-save project blocks to Firestore
+- Board selector with board-specific capabilities and metadata
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### Hardware + Firmware
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+- Compile source to firmware artifacts in cloud (`.bin`, `.hex`, `.uf2`)
+- ESP flashing through `esptool-js` and WebSerial
+- AVR flashing path scaffold (STK500 flow)
+- UF2 workflow helper for boards that use drag-and-drop flashing
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+### Blocks + Libraries
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+- Core blocks: events, GPIO, timing, serial, arrays, mapping
+- Sensor blocks
+- Display blocks
+- Motor/actuator blocks
+- Communication + IoT blocks (WiFi/HTTP/MQTT/BLE/classic serial)
+- Camera/storage/time blocks
+- Navigation and advanced control blocks
+- Audio/media blocks
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### Product Surface
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+- Landing page and onboarding
+- Email/password + Google authentication
+- Dashboard project management
+- Marketplace page
+- Profile page
+- Guided IDE quick-help overlays
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+### ML Workspace
 
-## Cloud Firmware Compile Service
+- Data collection view
+- Training job view
+- Inference testing view
+- Board gating for ML-capable hardware
 
-This project now supports real cloud firmware compilation for the IDE flash flow.
+## Supported Boards
 
-### 1) Deploy compiler backend
+- ESP32 WROOM-32
+- ESP32-S3
+- ESP32-CAM
+- ESP32-C3
+- ESP8266 NodeMCU
+- Arduino Uno R3
+- Arduino Uno R4 WiFi
+- Arduino Nano
+- Arduino Nano ESP32
+- Arduino Mega 2560
 
-Use the `compiler-service` folder as a Cloud Run service:
+Board definitions live in `src/boards/registry.ts`.
+
+## Tech Stack
+
+- Frontend: React + TypeScript + Vite
+- UI/Editor: Blockly
+- Backend services: Firebase (Auth, Firestore, Storage)
+- Cloud compile backend: Node + Express + `arduino-cli`
+- Deployment: Netlify (frontend), Cloud Run (compiler service)
+
+## Repo Structure
+
+- `src/` - frontend app, IDE, blocks, libraries, flash protocols
+- `compiler-service/` - cloud compile service (Dockerized)
+- `netlify/functions/` - Netlify function proxy (`compile-firmware`)
+- `public/` - static assets
+
+## Local Development
 
 ```bash
-cd compiler-service
-docker build -t bitblock-compiler .
+npm install
+npm run dev
 ```
 
-Deploy that image to Cloud Run and copy the service URL.
+Build:
 
-### 2) Configure Netlify proxy
+```bash
+npm run build
+```
 
-Set a Netlify environment variable:
+## Environment Variables
 
-- `COMPILER_SERVICE_URL=https://<your-cloud-run-service-url>`
+Create `.env` (or use Netlify env vars):
 
-The frontend calls `/.netlify/functions/compile-firmware`, and that function forwards compile requests to your compiler service.
+```env
+VITE_FIREBASE_API_KEY=...
+VITE_FIREBASE_AUTH_DOMAIN=...
+VITE_FIREBASE_PROJECT_ID=...
+VITE_FIREBASE_STORAGE_BUCKET=...
+VITE_FIREBASE_MESSAGING_SENDER_ID=...
+VITE_FIREBASE_APP_ID=...
+VITE_FIREBASE_MEASUREMENT_ID=...
+VITE_COMPILER_URL=https://<cloud-run-service>/compile
+```
 
-### 3) Configure frontend (optional override)
+Reference template: `.env.example`.
 
-- `VITE_COMPILER_URL=/.netlify/functions/compile-firmware`
+## Cloud Compile + Flash Setup
 
-If you want to call the compiler directly during local dev, set `VITE_COMPILER_URL` to your backend URL.
+### 1) Deploy compiler service (Cloud Run)
+
+From `compiler-service/`:
+
+```bash
+gcloud builds submit --tag us-east4-docker.pkg.dev/<PROJECT>/<REPO>/bitblock-compiler:latest .
+gcloud run deploy bitblock-compiler \
+  --image us-east4-docker.pkg.dev/<PROJECT>/<REPO>/bitblock-compiler:latest \
+  --region us-east4 \
+  --allow-unauthenticated
+```
+
+### 2) Configure frontend
+
+- Set `VITE_COMPILER_URL` to your Cloud Run endpoint + `/compile`
+- Redeploy Netlify
+
+### 3) Verify
+
+- `GET /health` returns `{ "ok": true }`
+- Compile in IDE returns firmware artifact and enables flash
+
+## Notes
+
+- For production reliability, keep Cloud Run compile concurrency conservative (`1`) and scale with more instances.
+- For ESP flashing, always compile for the board that matches connected hardware.
+
+## Roadmap
+
+- Complete AVR flashing implementation
+- Artifact metadata and compile logs UI panel
+- Multi-artifact ESP flashing bundles by target board profile
+- Queue-based compile pipeline for high-concurrency workloads
+
+---
+
+Built for builders who want fast iteration from idea to firmware.

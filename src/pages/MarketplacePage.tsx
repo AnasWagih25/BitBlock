@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import { CheckCircle2, Star, Search, Puzzle } from "lucide-react";
-import { collection, getDocs, query, orderBy } from "firebase/firestore";
+import { CheckCircle2, Star, Search, Puzzle, Download } from "lucide-react";
+import { collection, getDocs, query, orderBy, doc, setDoc, updateDoc, increment, getDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import CassetteMascot from "../components/ui/CassetteMascot";
 
@@ -20,7 +20,11 @@ export default function MarketplacePage() {
   const [sort, setSort] = useState("downloads");
   const [blocks, setBlocks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [installedIds, setInstalledIds] = useState<Set<string>>(new Set());
+  const [installingId, setInstallingId] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
+  // Fetch marketplace blocks
   useEffect(() => {
     const fetchBlocks = async () => {
       try {
@@ -38,6 +42,70 @@ export default function MarketplacePage() {
     fetchBlocks();
   }, []);
 
+  // Fetch user's installed blocks
+  useEffect(() => {
+    if (!user) return;
+    const fetchInstalled = async () => {
+      try {
+        const snap = await getDocs(collection(db, "users", user.uid, "installedBlocks"));
+        setInstalledIds(new Set(snap.docs.map(d => d.id)));
+      } catch (err) {
+        console.error("Failed to fetch installed blocks:", err);
+      }
+    };
+    fetchInstalled();
+  }, [user]);
+
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const handleInstall = async (block: any) => {
+    if (!user) return;
+    setInstallingId(block.id);
+    try {
+      // 1. Write block reference to user's installedBlocks subcollection
+      await setDoc(doc(db, "users", user.uid, "installedBlocks", block.id), {
+        blockId: block.id,
+        name: block.name,
+        category: block.category,
+        installedAt: new Date(),
+      }, { merge: true });
+
+      // 2. Atomically increment download count on the marketplace doc
+      await updateDoc(doc(db, "marketplace", block.id), {
+        downloads: increment(1)
+      });
+
+      // 3. Update local state
+      setInstalledIds(prev => new Set([...prev, block.id]));
+      setBlocks(prev => prev.map(b => b.id === block.id ? { ...b, downloads: (b.downloads || 0) + 1 } : b));
+      showToast(`✓ "${block.name}" installed! Restart IDE to use it.`);
+    } catch (err: any) {
+      console.error("Install failed:", err);
+      showToast(`✗ Install failed: ${err?.message || "Unknown error"}`);
+    } finally {
+      setInstallingId(null);
+    }
+  };
+
+  const handleUninstall = async (block: any) => {
+    if (!user) return;
+    setInstallingId(block.id);
+    try {
+      const { deleteDoc: delDoc } = await import("firebase/firestore");
+      await delDoc(doc(db, "users", user.uid, "installedBlocks", block.id));
+      setInstalledIds(prev => { const next = new Set(prev); next.delete(block.id); return next; });
+      showToast(`"${block.name}" uninstalled.`);
+    } catch (err: any) {
+      console.error("Uninstall failed:", err);
+      showToast(`✗ Uninstall failed: ${err?.message || "Unknown error"}`);
+    } finally {
+      setInstallingId(null);
+    }
+  };
+
   const filtered = blocks
     .filter((b) => category === "All" || b.category === category)
     .filter((b) => (b.name || "").toLowerCase().includes(search.toLowerCase()) || (b.desc || b.description || "").toLowerCase().includes(search.toLowerCase()))
@@ -45,6 +113,19 @@ export default function MarketplacePage() {
 
   return (
     <div style={{ minHeight: "100vh", background: "#0A0A0A", fontFamily: "Space Grotesk, sans-serif" }}>
+      {/* Toast notification */}
+      {toast && (
+        <div style={{
+          position: "fixed", top: 80, right: 32, zIndex: 200,
+          background: "#12031C", border: "1px solid #9D27DE", borderRadius: 10,
+          padding: "12px 20px", color: "#F2F2F0", fontSize: 13, fontWeight: 500,
+          boxShadow: "0 8px 32px rgba(0,0,0,0.5)", animation: "slide-up 0.25s ease",
+          display: "flex", alignItems: "center", gap: 8,
+        }}>
+          {toast}
+        </div>
+      )}
+
       {/* Nav */}
       <nav className="glass-dark" style={{
         height: 60, display: "flex", alignItems: "center",
@@ -167,53 +248,70 @@ export default function MarketplacePage() {
             </div>
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
-              {filtered.map((block) => (
-                <div key={block.id} className="card" style={{ padding: 20, cursor: "default" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-                    <div>
-                      <span className="tag">{block.category}</span>
-                      {block.verified && (
-                        <span className="badge badge-success" style={{ marginLeft: 6 }}>
-                          <CheckCircle2 size={12} /> Verified
-                        </span>
+              {filtered.map((block) => {
+                const isInstalled = installedIds.has(block.id);
+                const isProcessing = installingId === block.id;
+                return (
+                  <div key={block.id} className="card" style={{ padding: 20, cursor: "default" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+                      <div>
+                        <span className="tag">{block.category}</span>
+                        {block.verified && (
+                          <span className="badge badge-success" style={{ marginLeft: 6 }}>
+                            <CheckCircle2 size={12} /> Verified
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <Star size={14} color="#F59E0B" fill="#F59E0B" />
+                        <span style={{ fontSize: 12, color: "#F2F2F0" }}>{block.rating || 0}</span>
+                      </div>
+                    </div>
+
+                    <h3 style={{ fontSize: 15, fontWeight: 700, color: "#F2F2F0", marginBottom: 8, lineHeight: 1.3 }}>{block.name}</h3>
+                    <p style={{ fontSize: 12, color: "rgba(242,242,240,0.5)", lineHeight: 1.6, marginBottom: 12 }}>{block.desc || block.description}</p>
+
+                    {/* Board compatibility */}
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
+                      {(block.boards || []).map((b: string) => (
+                        <span key={b} style={{
+                          fontSize: 10, padding: "2px 8px", borderRadius: 4,
+                          background: `${BOARD_COLORS[b] || "#9D27DE"}15`,
+                          color: BOARD_COLORS[b] || "#9D27DE",
+                          border: `1px solid ${BOARD_COLORS[b] || "#9D27DE"}30`,
+                        }}>{b}</span>
+                      ))}
+                    </div>
+
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: 11, color: "rgba(242,242,240,0.3)" }}>
+                        by <span style={{ color: "#9D27DE" }}>{block.author || "Unknown"}</span> · {(block.downloads || 0).toLocaleString()} installs
+                      </span>
+                      {isInstalled ? (
+                        <button
+                          id={`uninstall-block-${block.id}`}
+                          className="btn-secondary"
+                          disabled={isProcessing}
+                          style={{ padding: "5px 14px", fontSize: 11, display: "flex", alignItems: "center", gap: 6, opacity: isProcessing ? 0.5 : 1 }}
+                          onClick={() => handleUninstall(block)}
+                        >
+                          <CheckCircle2 size={12} /> {isProcessing ? "..." : "Installed ✓"}
+                        </button>
+                      ) : (
+                        <button
+                          id={`install-block-${block.id}`}
+                          className="btn-primary"
+                          disabled={isProcessing}
+                          style={{ padding: "5px 14px", fontSize: 11, display: "flex", alignItems: "center", gap: 6, opacity: isProcessing ? 0.5 : 1 }}
+                          onClick={() => handleInstall(block)}
+                        >
+                          <Download size={12} /> {isProcessing ? "Installing..." : "Install"}
+                        </button>
                       )}
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                      <Star size={14} color="#F59E0B" fill="#F59E0B" />
-                      <span style={{ fontSize: 12, color: "#F2F2F0" }}>{block.rating || 0}</span>
-                    </div>
                   </div>
-
-                  <h3 style={{ fontSize: 15, fontWeight: 700, color: "#F2F2F0", marginBottom: 8, lineHeight: 1.3 }}>{block.name}</h3>
-                  <p style={{ fontSize: 12, color: "rgba(242,242,240,0.5)", lineHeight: 1.6, marginBottom: 12 }}>{block.desc || block.description}</p>
-
-                  {/* Board compatibility */}
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
-                    {(block.boards || []).map((b: string) => (
-                      <span key={b} style={{
-                        fontSize: 10, padding: "2px 8px", borderRadius: 4,
-                        background: `${BOARD_COLORS[b] || "#9D27DE"}15`,
-                        color: BOARD_COLORS[b] || "#9D27DE",
-                        border: `1px solid ${BOARD_COLORS[b] || "#9D27DE"}30`,
-                      }}>{b}</span>
-                    ))}
-                  </div>
-
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: 11, color: "rgba(242,242,240,0.3)" }}>
-                      by <span style={{ color: "#9D27DE" }}>{block.author || "Unknown"}</span> · {(block.downloads || 0).toLocaleString()} installs
-                    </span>
-                    <button
-                      id={`install-block-${block.id}`}
-                      className="btn-primary"
-                      style={{ padding: "5px 14px", fontSize: 11 }}
-                      onClick={() => alert(`Installing "${block.name}"... (Marketplace backend coming soon!)`)}
-                    >
-                      Install
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

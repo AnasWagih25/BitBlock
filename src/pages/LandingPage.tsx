@@ -305,12 +305,25 @@ export default function LandingPage() {
       }}>
         <span style={{ fontFamily: "Superstar, fantasy", fontSize: 16, color: "#9D27DE" }}>BITBLOCK</span>
         <div style={{ display: "flex", gap: 24 }}>
-          {["Docs", "Marketplace", "GitHub", "Discord"].map((l) => (
-            <a key={l} href="#" style={{ color: "rgba(242,242,240,0.4)", fontSize: 13, textDecoration: "none" }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = "#9D27DE")}
-              onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(242,242,240,0.4)")}>
-              {l}
-            </a>
+          {[
+            { label: "Docs", href: "#" },
+            { label: "Marketplace", to: "/marketplace" },
+            { label: "GitHub", href: "https://github.com/AnasWagih25/BitBlock" },
+            { label: "Discord", href: "#" }
+          ].map((l) => (
+            l.to ? (
+              <Link key={l.label} to={l.to} style={{ color: "rgba(242,242,240,0.4)", fontSize: 13, textDecoration: "none" }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = "#9D27DE")}
+                onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(242,242,240,0.4)")}>
+                {l.label}
+              </Link>
+            ) : (
+              <a key={l.label} href={l.href} style={{ color: "rgba(242,242,240,0.4)", fontSize: 13, textDecoration: "none" }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = "#9D27DE")}
+                onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(242,242,240,0.4)")}>
+                {l.label}
+              </a>
+            )
           ))}
         </div>
         <span style={{ fontSize: 12, color: "rgba(242,242,240,0.25)" }}>© 2026 BitBlock. All rights reserved.</span>

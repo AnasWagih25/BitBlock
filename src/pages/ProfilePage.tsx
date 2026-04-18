@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, updateDoc, serverTimestamp, getCountFromServer, collection, query, where } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { updateProfile } from "firebase/auth";
 import { db, storage } from "../lib/firebase";
 import { useAuth } from "../contexts/AuthContext";
+import { useAppDialog } from "../contexts/DialogContext";
 import CassetteMascot from "../components/ui/CassetteMascot";
 import { Edit2, Crown, Wrench, FolderOpen, Puzzle, Camera } from "lucide-react";
 
 export default function ProfilePage() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, updateUserProfile } = useAuth();
+  const { alert } = useAppDialog();
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [displayName, setDisplayName] = useState("");
@@ -21,7 +23,7 @@ export default function ProfilePage() {
     const file = e.target.files[0];
     
     if (file.size > 5 * 1024 * 1024) {
-      alert("Image is too large. Maximum size is 5MB.");
+      await alert("Image is too large. Maximum size is 5MB.");
       return;
     }
 
@@ -33,13 +35,13 @@ export default function ProfilePage() {
       await uploadBytes(storageRef, file);
       const url = await getDownloadURL(storageRef);
 
-      await updateProfile(user, { photoURL: url });
+      await updateUserProfile({ photoURL: url });
       await updateDoc(doc(db, "users", user.uid), { photoURL: url });
 
       setProfile((p: any) => ({ ...p, photoURL: url }));
     } catch (err: any) {
       console.error("Avatar upload failed:", err);
-      alert("Failed to upload image. Please try again.");
+      await alert("Failed to upload image. Please try again.");
     } finally {
       setUploadingAvatar(false);
     }
@@ -55,10 +57,17 @@ export default function ProfilePage() {
     setLoading(true);
     try {
       const snap = await getDoc(doc(db, "users", user.uid));
+      
+      const q = query(collection(db, "projects"), where("ownerId", "==", user.uid));
+      const countSnap = await getCountFromServer(q);
+      const projectCount = countSnap.data().count;
+
       if (snap.exists()) {
         const data = snap.data();
-        setProfile(data);
+        setProfile({ ...data, projectCount });
         setDisplayName(data.displayName || user.displayName || "");
+      } else {
+        setProfile({ projectCount });
       }
     } catch (e) {
       console.error(e);
@@ -76,6 +85,7 @@ export default function ProfilePage() {
     if (!user || !canChangeName) return;
     setSaving(true);
     try {
+      await updateUserProfile({ displayName });
       await updateDoc(doc(db, "users", user.uid), { 
         displayName,
         nameLastChangedAt: serverTimestamp()
@@ -83,7 +93,7 @@ export default function ProfilePage() {
       setProfile((p: any) => ({ ...p, displayName, nameLastChangedAt: new Date() }));
     } catch (e: any) {
       console.error(e);
-      alert("Failed to update profile. " + (e.message || "Ensure you're not trying to bypass the 30-day limit."));
+      await alert("Failed to update profile. " + (e.message || "Ensure you're not trying to bypass the 30-day limit."));
     } finally {
       setSaving(false);
     }
@@ -197,7 +207,7 @@ export default function ProfilePage() {
               {[
                 { label: "Projects", value: profile?.projectCount || 0, icon: <FolderOpen size={28} /> },
                 { label: "Published Blocks", value: profile?.publishedBlocks || 0, icon: <Puzzle size={28} /> },
-                { label: "Compilations", value: "—", icon: <Wrench size={28} /> },
+                { label: "Compilations", value: profile?.compilationCount || 0, icon: <Wrench size={28} /> },
               ].map((stat) => (
                 <div key={stat.label} className="card" style={{ textAlign: "center", padding: 24 }}>
                   <div style={{ fontSize: 28, marginBottom: 8 }}>{stat.icon}</div>
