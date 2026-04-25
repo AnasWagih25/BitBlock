@@ -46,6 +46,7 @@ function pickArchitecture(task: MLTask, board: BoardConfig): string {
   }
   if (task === "keyword_spotting" && eligible.includes("ds_cnn")) return "ds_cnn";
   if (task === "image_classification" && eligible.includes("mobilenet_v1")) return "mobilenet_v1";
+  if (task === "face_recognition" && eligible.includes("face_recognition")) return "face_recognition";
   if (task === "object_detection" && eligible.includes("fomo")) return "fomo";
   if (task === "sound" && eligible.includes("cnn_1d_mfcc")) return "cnn_1d_mfcc";
   if (task === "gesture" && eligible.includes("cnn_1d_imu")) return "cnn_1d_imu";
@@ -61,6 +62,11 @@ export function getAutoMLPreset(task: MLTask, board: BoardConfig): AutoMLPreset 
 
   if (architecture === "fomo") {
     hyperparameters.batch_size = Math.min(Number(base.batch_size) || 16, 24);
+  }
+  if (architecture === "face_recognition") {
+    hyperparameters.batch_size = Math.min(Number(base.batch_size) || 16, 16);
+    hyperparameters.epochs = Math.max(40, Number(base.epochs) || 40);
+    hyperparameters.embedding_dim = 64;
   }
   if (architecture === "autoencoder_tiny") {
     hyperparameters.epochs = Math.max(35, Number(base.epochs) || 35);

@@ -55,7 +55,7 @@ export const BOARDS: BoardConfig[] = [
     camera: true,
     mlSupport: true,
     maxModelSizeKb: 2000,
-    supportedMLTasks: ["gesture", "motion_anomaly", "keyword_spotting", "sound", "sensor_anomaly", "image_classification", "object_detection"]
+    supportedMLTasks: ["gesture", "motion_anomaly", "keyword_spotting", "sound", "sensor_anomaly", "image_classification", "object_detection", "face_recognition"]
   },
   {
     id: "esp32-cam",
@@ -71,7 +71,7 @@ export const BOARDS: BoardConfig[] = [
     camera: true,
     mlSupport: true,
     maxModelSizeKb: 1500,
-    supportedMLTasks: ["image_classification", "object_detection", "motion_anomaly", "sensor_anomaly"],
+    supportedMLTasks: ["image_classification", "object_detection", "face_recognition", "motion_anomaly", "sensor_anomaly"],
     notes: "Requires FTDI adapter + GPIO 0 pulled LOW to flash."
   },
   {

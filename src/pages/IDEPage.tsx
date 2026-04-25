@@ -72,7 +72,7 @@ export default function IDEPage() {
   const [mlArch, setMlArch] = useState<string>("");
   const [trainedModel, setTrainedModel] = useState<{ blockId: string, arch: string, headerUrl: string, labels: string[] } | null>(null);
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
-  const [activeGuide, setActiveGuide] = useState<{label: string, content: any} | null>(null);
+  const [activeGuide, setActiveGuide] = useState<{ label: string, content: any } | null>(null);
   const [promptDialog, setPromptDialog] = useState<{ message: string, defaultValue: string, callback: (v: string | null) => void } | null>(null);
   const [showMlOnboarding, setShowMlOnboarding] = useState(false);
   const [showMarketplaceExport, setShowMarketplaceExport] = useState(false);
@@ -92,7 +92,7 @@ export default function IDEPage() {
 
   const QUICK_GUIDES: Record<string, any> = {
     "Control Logic": (
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <p>Execution flow blocks natively map to C++ control structures, directly determining how the CPU processes your logic algorithm.</p>
         <ul style={{ paddingLeft: 20, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
           <li><b>If Statements:</b> Dynamically route CPU execution based on Boolean conditions. These evaluate natively at runtime.</li>
@@ -452,7 +452,7 @@ export default function IDEPage() {
       const blocklyMod = await import("blockly");
       const baseBlockly = blocklyMod.default || blocklyMod;
       Blockly = { ...baseBlockly }; // Spread explicitly prevents the 'read only' shadow error on modules
-      
+
       const jsMod = await import("blockly/javascript");
       Blockly.javascriptGenerator = jsMod.javascriptGenerator;
       Blockly.JavaScript = jsMod.javascriptGenerator;
@@ -504,7 +504,7 @@ export default function IDEPage() {
         constructor() {
           super();
           // Add extra padding at the bottom of statement inputs so inner fangs don't overlap flat housing blocks
-          this.STATEMENT_BOTTOM_SPACER = 12; 
+          this.STATEMENT_BOTTOM_SPACER = 12;
         }
       }
 
@@ -537,7 +537,7 @@ export default function IDEPage() {
           const installedSnap = await getDocs(collection(db, "users", user.uid, "installedBlocks"));
           const installedIds = installedSnap.docs.map(d => d.id);
           setMarketplaceInstalledCount(installedIds.length);
-          
+
           for (const blockId of installedIds) {
             try {
               const mpSnap = await getDoc(doc(db, "marketplace", blockId));
@@ -553,7 +553,7 @@ export default function IDEPage() {
                   blocksXml: storedBlocksXml,
                 });
               }
-              
+
               // Register the block definition if it has blockJSON
               const rawBlockJson = mpData.blockJSON ?? mpData.blockJson;
               if (rawBlockJson) {
@@ -563,21 +563,21 @@ export default function IDEPage() {
                   init() { this.jsonInit(blockDef); }
                 };
                 loadedMarketplaceTypes.push(blockDef.type);
-                
+
                 // Register the code generator if provided
                 const generatorCode = mpData.generatorCode ?? mpData.generator;
                 if (generatorCode) {
                   const gen = Blockly.javascriptGenerator || Blockly.JavaScript;
                   try {
                     const genFn = new Function('block', 'generator', generatorCode);
-                    gen.forBlock[blockDef.type] = function(block: any) {
+                    gen.forBlock[blockDef.type] = function (block: any) {
                       return genFn(block, gen);
                     };
                   } catch (genErr) {
                     console.warn(`Failed to parse generator for marketplace block ${blockId}:`, genErr);
                   }
                 }
-                
+
                 console.log(`[Marketplace] Loaded block: ${mpData.name || blockId}`);
               }
             } catch (blockErr) {
@@ -640,17 +640,17 @@ export default function IDEPage() {
       if (gen) {
         const boardId = project?.board || "esp32-wroom";
         compiler.init(boardId);
-        
+
         let code = gen.workspaceToCode(workspaceRef.current);
         const wrapped = compiler.assemble(code);
         setGeneratedCode(wrapped || "// Add blocks to generate code");
-        
+
         const warning = compiler.getMemoryWarning();
         if (warning) {
-            setCompileMessage(warning);
-            setCompileStatus("error"); // use error styling for warning for now
+          setCompileMessage(warning);
+          setCompileStatus("error"); // use error styling for warning for now
         } else if (compileStatus === "error" && compileMessage.includes("Estimated memory usage is high")) {
-            setCompileStatus("idle");
+          setCompileStatus("idle");
         }
       }
     } catch (e) {
@@ -731,7 +731,7 @@ export default function IDEPage() {
       if (staleInstalledIds.length > 0) {
         await Promise.all(
           staleInstalledIds.map((id) =>
-            deleteDoc(doc(db, "users", user.uid, "installedBlocks", id)).catch(() => {}),
+            deleteDoc(doc(db, "users", user.uid, "installedBlocks", id)).catch(() => { }),
           ),
         );
       }
@@ -888,12 +888,12 @@ export default function IDEPage() {
           offset: p.offset,
           data: new Uint8Array(atob(p.dataBase64).split("").map(c => c.charCodeAt(0)))
         }));
-        
+
         const totalSize = parsedParts.reduce((acc: number, p: any) => acc + p.data.byteLength, 0);
         if (totalSize < 32768) {
           throw new Error(`Firmware bundle is too small (${totalSize} bytes) and looks invalid for app flash.`);
         }
-        
+
         setFirmwareBinary({ parts: parsedParts });
         setCompileArtifactHash(await hashCompiledArtifact({ parts: parsedParts }));
         const kb = (totalSize / 1024).toFixed(1);
@@ -932,7 +932,7 @@ export default function IDEPage() {
         await updateDoc(doc(db, "users", user.uid), { compilationCount: increment(1) });
         await incrementCompileCount();
       } catch (err) {
-         console.warn("Failed to increment compilation count", err);
+        console.warn("Failed to increment compilation count", err);
       }
     } catch (e: any) {
       setCompileStatus("error");
@@ -1167,22 +1167,22 @@ export default function IDEPage() {
     }
 
     if (board.id === "arduino-nano-esp32" || board.id === "rp2040-pico") {
-       setPanelTab("serial");
-       if (firmwareBinary) {
-         const buffer = firmwareBinary instanceof ArrayBuffer ? firmwareBinary : (firmwareBinary as any).parts[0].data.buffer;
-         flashUF2(buffer, appendLog);
-       }
-       return;
+      setPanelTab("serial");
+      if (firmwareBinary) {
+        const buffer = firmwareBinary instanceof ArrayBuffer ? firmwareBinary : (firmwareBinary as any).parts[0].data.buffer;
+        flashUF2(buffer, appendLog);
+      }
+      return;
     }
 
     if (!flashSupported) {
       await alert("WebSerial is not supported in your browser.\n\nPlease use Chrome or Edge.");
       return;
     }
-    
+
     if (board.id === "esp32-cam") {
-       setShowCamWizard(true);
-       return;
+      setShowCamWizard(true);
+      return;
     }
 
     await performSerialFlash(board);
@@ -1191,49 +1191,49 @@ export default function IDEPage() {
   const performSerialFlash = async (board: any) => {
     setShowCamWizard(false);
     setPanelTab("serial");
-    
+
     try {
       const port = await ensureSerialPort();
       appendLog("[WebSerial] Port acquired for flashing");
       await releaseOpenSerialPorts();
 
       if (board.platform === "esp32" || board.platform === "esp8266") {
-          const espPayload = getEspFlashPayload(firmwareBinary);
-          if (!espPayload) {
-            appendLog("[Error] Firmware artifact missing or empty.");
-            return;
-          }
-          if (typeof espPayload === "object" && "parts" in espPayload) {
-            appendLog(`[Flash] Multi-part image (${espPayload.parts.length} regions) — bootloader, partition table, and app.`);
-          }
-          // esptool-js Transport handles port.open() internally,
-          // flashESPBlock now closes the port first before opening via Transport.
-          appendLog(`[Flash] Starting ESP flash for ${board.name}...`);
-          await flashESPBlock(port, 115200, espPayload, appendLog);
+        const espPayload = getEspFlashPayload(firmwareBinary);
+        if (!espPayload) {
+          appendLog("[Error] Firmware artifact missing or empty.");
+          return;
+        }
+        if (typeof espPayload === "object" && "parts" in espPayload) {
+          appendLog(`[Flash] Multi-part image (${espPayload.parts.length} regions) — bootloader, partition table, and app.`);
+        }
+        // esptool-js Transport handles port.open() internally,
+        // flashESPBlock now closes the port first before opening via Transport.
+        appendLog(`[Flash] Starting ESP flash for ${board.name}...`);
+        await flashESPBlock(port, 115200, espPayload, appendLog);
       } else if (board.isAVR) {
-          const primaryFirmware = getPrimaryFirmwareBuffer(firmwareBinary);
-          if (!primaryFirmware || primaryFirmware.byteLength === 0) {
-            appendLog("[Error] Firmware artifact missing or empty.");
-            return;
+        const primaryFirmware = getPrimaryFirmwareBuffer(firmwareBinary);
+        if (!primaryFirmware || primaryFirmware.byteLength === 0) {
+          appendLog("[Error] Firmware artifact missing or empty.");
+          return;
+        }
+        // STK500 protocol needs the port; close any existing streams first
+        // so stk500Protocol can open fresh reader/writer handles.
+        try {
+          if (port.readable || port.writable) {
+            await port.close();
           }
-          // STK500 protocol needs the port; close any existing streams first
-          // so stk500Protocol can open fresh reader/writer handles.
-          try {
-            if (port.readable || port.writable) {
-              await port.close();
-            }
-          } catch {
-            // already closed — that's fine
-          }
-          appendLog(`[Flash] Starting AVR/STK500 flash for ${board.name}...`);
-          // The compiler returns Intel HEX text for AVR boards (format: "hex").
-          // firmwareBinary contains the ASCII bytes of that hex file — decode
-          // it back to a string and pass directly to the STK500 flasher.
-          const hexData = new TextDecoder().decode(primaryFirmware);
-          await flashSTK500(port, hexData, appendLog);
+        } catch {
+          // already closed — that's fine
+        }
+        appendLog(`[Flash] Starting AVR/STK500 flash for ${board.name}...`);
+        // The compiler returns Intel HEX text for AVR boards (format: "hex").
+        // firmwareBinary contains the ASCII bytes of that hex file — decode
+        // it back to a string and pass directly to the STK500 flasher.
+        const hexData = new TextDecoder().decode(primaryFirmware);
+        await flashSTK500(port, hexData, appendLog);
       } else {
-          appendLog(`[Error] No flash protocol available for platform: ${board.platform}`);
-          appendLog("[Hint] Export the .ino file and flash using Arduino IDE.");
+        appendLog(`[Error] No flash protocol available for platform: ${board.platform}`);
+        appendLog("[Hint] Export the .ino file and flash using Arduino IDE.");
       }
 
     } catch (e: any) {
@@ -1261,17 +1261,17 @@ export default function IDEPage() {
   }
 
   return (
-    <div className="ide-layout" style={{ 
+    <div className="ide-layout" style={{
       fontFamily: "Space Grotesk, sans-serif",
       gridTemplateColumns: viewMode === "ml" ? "1fr" : (sidebarExpanded ? "260px 1fr 340px" : "48px 1fr 340px"),
-      gridTemplateRows: "auto 1fr 32px",
+      gridTemplateRows: "72px 1fr 32px",
       transition: "grid-template-columns 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
     }}>
 
       {/* ── Toolbar ─────────────────────────────────────── */}
       <header className="ide-toolbar glass-dark" style={{
         display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
-        padding: "8px 16px 0", borderBottom: "1px solid rgba(157,39,222,0.15)",
+        padding: "0 20px", borderBottom: "1px solid rgba(157,39,222,0.15)",
       }}>
         <Link to="/dashboard" style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: 8 }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(242,242,240,0.5)" strokeWidth="3">
@@ -1288,39 +1288,39 @@ export default function IDEPage() {
           {/* View Mode Toggle */}
           <div style={{ display: "flex", background: "rgba(0,0,0,0.3)", borderRadius: 6, padding: 3, border: "1px solid rgba(157,39,222,0.15)" }}>
             <button
-               onClick={() => setViewMode("blocks")}
-               style={{
-                  background: viewMode === "blocks" ? "rgba(157,39,222,0.2)" : "transparent",
-                  color: viewMode === "blocks" ? "#F2F2F0" : "rgba(242,242,240,0.5)",
-                  border: "none", padding: "4px 12px", borderRadius: 4, cursor: "pointer", fontSize: 12,
-                  display: "flex", alignItems: "center", gap: 6, transition: "0.2s"
-               }}
+              onClick={() => setViewMode("blocks")}
+              style={{
+                background: viewMode === "blocks" ? "rgba(157,39,222,0.2)" : "transparent",
+                color: viewMode === "blocks" ? "#F2F2F0" : "rgba(242,242,240,0.5)",
+                border: "none", padding: "4px 12px", borderRadius: 4, cursor: "pointer", fontSize: 12,
+                display: "flex", alignItems: "center", gap: 6, transition: "0.2s"
+              }}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 9h16v11H4z"/><path d="M4 9l8-5 8 5"/></svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 9h16v11H4z" /><path d="M4 9l8-5 8 5" /></svg>
               Workspace
             </button>
-             <button
-               onClick={() => {
-                 if (isMlSupported) {
-                   setViewMode("ml");
-                   if (!mlOnboardingShownRef.current) {
-                     mlOnboardingShownRef.current = true;
-                     setShowMlOnboarding(true);
-                   }
-                 }
-               }}
-               title={!isMlSupported ? "Board does not support ML Pipeline" : ""}
-               style={{
-                  background: viewMode === "ml" ? "rgba(157,39,222,0.2)" : "transparent",
-                  color: isMlSupported ? (viewMode === "ml" ? "#F2F2F0" : "rgba(242,242,240,0.5)") : "rgba(242,242,240,0.2)",
-                  border: "none", padding: "4px 12px", borderRadius: 4, cursor: isMlSupported ? "pointer" : "not-allowed", fontSize: 12,
-                  display: "flex", alignItems: "center", gap: 6, transition: "0.2s"
-               }}
+            <button
+              onClick={() => {
+                if (isMlSupported) {
+                  setViewMode("ml");
+                  if (!mlOnboardingShownRef.current) {
+                    mlOnboardingShownRef.current = true;
+                    setShowMlOnboarding(true);
+                  }
+                }
+              }}
+              title={!isMlSupported ? "Board does not support ML Pipeline" : ""}
+              style={{
+                background: viewMode === "ml" ? "rgba(157,39,222,0.2)" : "transparent",
+                color: isMlSupported ? (viewMode === "ml" ? "#F2F2F0" : "rgba(242,242,240,0.5)") : "rgba(242,242,240,0.2)",
+                border: "none", padding: "4px 12px", borderRadius: 4, cursor: isMlSupported ? "pointer" : "not-allowed", fontSize: 12,
+                display: "flex", alignItems: "center", gap: 6, transition: "0.2s"
+              }}
             >
               {!isMlSupported ? (
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
               ) : (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z" /><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z" /></svg>
               )}
               ML Pipeline
             </button>
@@ -1382,7 +1382,7 @@ export default function IDEPage() {
           title={connectedPort ? "Disconnect currently paired board" : "Pair board via WebSerial"}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 6 }}>
-            <path d="M8 8v8M16 8v8M4 12h16"/>
+            <path d="M8 8v8M16 8v8M4 12h16" />
           </svg>
           {connectedPort ? "Disconnect Board" : "Connect Board"}
         </button>
@@ -1564,8 +1564,8 @@ export default function IDEPage() {
                 {compileStatus === "success"
                   ? (firmwareReady ? "Ready to flash! 🎉" : "Code ready · Firmware build pending")
                   : compileStatus === "error"
-                  ? "Check your blocks"
-                  : "Drag blocks to build"}
+                    ? "Check your blocks"
+                    : "Drag blocks to build"}
               </p>
             </div>
           </>
@@ -1574,25 +1574,25 @@ export default function IDEPage() {
 
       {/* ── Active Guide Modal Overlay ──────────────────── */}
       {activeGuide && (
-         <div style={{ position: "fixed", inset: 0, zIndex: 105, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)" }}
-              onClick={() => setActiveGuide(null)}
-         >
-            <div style={{ background: "#12031C", border: "1px solid #9D27DE", borderRadius: 12, padding: 32, width: 450, maxWidth: "90%", boxShadow: "0 24px 50px rgba(0,0,0,0.5)" }}
-                 onClick={(e) => e.stopPropagation()}
-            >
-               <h2 style={{ color: "#F2F2F0", fontWeight: 700, fontSize: 20, marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9D27DE" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-                  {activeGuide.label} Guide
-               </h2>
-               <div style={{ height: 1, width: "100%", background: "rgba(157,39,222,0.2)", marginBottom: 16 }} />
-               <p style={{ color: "#E0D8F0", fontSize: 14, lineHeight: 1.6, fontFamily: "Space Grotesk, sans-serif" }}>
-                 {activeGuide.content}
-               </p>
-               <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 24 }}>
-                 <button className="btn-primary" onClick={() => setActiveGuide(null)} style={{ padding: "8px 16px" }}>Close Guide</button>
-               </div>
+        <div style={{ position: "fixed", inset: 0, zIndex: 105, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)" }}
+          onClick={() => setActiveGuide(null)}
+        >
+          <div style={{ background: "#12031C", border: "1px solid #9D27DE", borderRadius: 12, padding: 32, width: 450, maxWidth: "90%", boxShadow: "0 24px 50px rgba(0,0,0,0.5)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 style={{ color: "#F2F2F0", fontWeight: 700, fontSize: 20, marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9D27DE" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" /></svg>
+              {activeGuide.label} Guide
+            </h2>
+            <div style={{ height: 1, width: "100%", background: "rgba(157,39,222,0.2)", marginBottom: 16 }} />
+            <p style={{ color: "#E0D8F0", fontSize: 14, lineHeight: 1.6, fontFamily: "Space Grotesk, sans-serif" }}>
+              {activeGuide.content}
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 24 }}>
+              <button className="btn-primary" onClick={() => setActiveGuide(null)} style={{ padding: "8px 16px" }}>Close Guide</button>
             </div>
-         </div>
+          </div>
+        </div>
       )}
 
       {/* ── Main Canvas (Blockly) ────────────────────────── */}
@@ -1792,133 +1792,133 @@ export default function IDEPage() {
 
       {/* ── Machine Learning Pipeline ──────────────────── */}
       {viewMode === "ml" && (
-          <div style={{ gridColumn: "1 / -1", gridRow: 2, flex: 1, display: "flex", justifyContent: "center", background: "#0A0A0A", padding: 16, gap: 16, overflow: "auto", height: "100%", boxSizing: "border-box", position: "relative" }}>
-              {!isMlSupported && (
-                 <div style={{ 
-                   position: "absolute", inset: 0, zIndex: 50, background: "rgba(10,10,10,0.85)", 
-                   backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center",
-                   flexDirection: "column", textAlign: "center", padding: 40
-                 }}>
-                    <div style={{ background: "#1A0628", border: "1px solid rgba(157,39,222,0.3)", borderRadius: 16, padding: "40px 60px", maxWidth: 500, boxShadow: "0 20px 50px rgba(0,0,0,0.5)" }}>
-                       <div style={{ width: 64, height: 64, borderRadius: "50%", background: "rgba(239,68,68,0.1)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 24px", border: "1px solid rgba(239,68,68,0.2)" }}>
-                          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                       </div>
-                       <h2 style={{ fontSize: 24, fontWeight: 700, color: "#F2F2F0", marginBottom: 12 }}>Hardware Incompatible</h2>
-                       <p style={{ fontSize: 14, color: "rgba(242,242,240,0.6)", lineHeight: 1.6, marginBottom: 24 }}>
-                         The selected board (<strong>{currentBoard.name}</strong>) does not have the necessary hardware acceleration or memory to run Machine Learning tasks. 
-                         <br /><br />
-                         To use the AI Workspace, please select an <strong>ESP32-S3</strong>, <strong>ESP32-CAM</strong>, or <strong>Arduino Nano ESP32</strong>.
-                       </p>
-                       <button 
-                         onClick={() => setViewMode("blocks")}
-                         className="btn-primary" 
-                         style={{ padding: "10px 24px" }}
-                       >
-                         Back to Workspace
-                       </button>
-                    </div>
-                 </div>
-              )}
-
-              <div style={{ width: "min(1440px, 100%)", background: "#1A0628", borderRadius: 12, border: "1px solid rgba(157,39,222,0.3)", display: "flex", flexDirection: "column", opacity: isMlSupported ? 1 : 0.4 }}>
-                <div style={{ padding: "10px 16px", borderBottom: "1px solid rgba(157,39,222,0.15)", background: "rgba(157,39,222,0.05)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                  <h2 style={{ fontSize: 16, fontWeight: 700, color: "#F2F2F0", display: "flex", alignItems: "center", gap: 8 }}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9D27DE" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/></svg>
-                    ML Pipeline
-                  </h2>
-                  <div style={{ display: "flex", background: "rgba(0,0,0,0.25)", borderRadius: 8, padding: 3, border: "1px solid rgba(157,39,222,0.15)", gap: 4 }}>
-                    <button
-                      onClick={() => setMlPipelineTab("collect")}
-                      style={{
-                        border: "none",
-                        padding: "6px 10px",
-                        borderRadius: 6,
-                        fontSize: 11,
-                        cursor: "pointer",
-                        background: mlPipelineTab === "collect" ? "rgba(157,39,222,0.2)" : "transparent",
-                        color: mlPipelineTab === "collect" ? "#F2F2F0" : "rgba(242,242,240,0.45)",
-                      }}
-                    >
-                      Data Collection
-                    </button>
-                    <button
-                      onClick={() => setMlPipelineTab("train")}
-                      style={{
-                        border: "none",
-                        padding: "6px 10px",
-                        borderRadius: 6,
-                        fontSize: 11,
-                        cursor: "pointer",
-                        background: mlPipelineTab === "train" ? "rgba(157,39,222,0.2)" : "transparent",
-                        color: mlPipelineTab === "train" ? "#F2F2F0" : "rgba(242,242,240,0.45)",
-                      }}
-                    >
-                      Training
-                    </button>
-                    <button
-                      onClick={() => setMlPipelineTab("versions")}
-                      style={{
-                        border: "none",
-                        padding: "6px 10px",
-                        borderRadius: 6,
-                        fontSize: 11,
-                        cursor: "pointer",
-                        background: mlPipelineTab === "versions" ? "rgba(157,39,222,0.2)" : "transparent",
-                        color: mlPipelineTab === "versions" ? "#F2F2F0" : "rgba(242,242,240,0.45)",
-                      }}
-                    >
-                      Versions
-                    </button>
-                    <button
-                      onClick={() => setMlPipelineTab("test")}
-                      style={{
-                        border: "none",
-                        padding: "6px 10px",
-                        borderRadius: 6,
-                        fontSize: 11,
-                        cursor: "pointer",
-                        background: mlPipelineTab === "test" ? "rgba(157,39,222,0.2)" : "transparent",
-                        color: mlPipelineTab === "test" ? "#F2F2F0" : "rgba(242,242,240,0.45)",
-                      }}
-                    >
-                      Inference Testing
-                    </button>
-                  </div>
+        <div style={{ gridColumn: "1 / -1", gridRow: 2, flex: 1, display: "flex", justifyContent: "center", background: "#0A0A0A", padding: 16, gap: 16, overflow: "auto", height: "100%", boxSizing: "border-box", position: "relative" }}>
+          {!isMlSupported && (
+            <div style={{
+              position: "absolute", inset: 0, zIndex: 50, background: "rgba(10,10,10,0.85)",
+              backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center",
+              flexDirection: "column", textAlign: "center", padding: 40
+            }}>
+              <div style={{ background: "#1A0628", border: "1px solid rgba(157,39,222,0.3)", borderRadius: 16, padding: "40px 60px", maxWidth: 500, boxShadow: "0 20px 50px rgba(0,0,0,0.5)" }}>
+                <div style={{ width: 64, height: 64, borderRadius: "50%", background: "rgba(239,68,68,0.1)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 24px", border: "1px solid rgba(239,68,68,0.2)" }}>
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2"><rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
                 </div>
-
-                <div style={{ flex: 1, overflow: "auto", position: "relative" }}>
-                  {mlPipelineTab === "collect" && (
-                    <DataCollection projectId={projectId || ""} boardId={project?.board || "esp32-wroom"} task={mlTask} architecture={mlArch} />
-                  )}
-                  {mlPipelineTab === "train" && (
-                    <TrainingView projectId={projectId || ""} boardId={project?.board || "esp32-wroom"} task={mlTask} setTask={setMlTask} selectedArch={mlArch} setSelectedArch={setMlArch} onGoToCollect={() => setMlPipelineTab("collect")} canStartTraining={canStartTraining} trainingBlockReason={trainingBlockReason} incrementTrainingCount={incrementTrainingCount} />
-                  )}
-                  {mlPipelineTab === "versions" && projectId && (
-                    <ModelRegistry
-                      projectId={projectId}
-                      pipelineArchitecture={mlArch}
-                      activeJobId={project?.mlActiveTrainingJobId ?? null}
-                      onTestModel={(jobId) => {
-                        setInferenceJobOverride(jobId);
-                        setMlPipelineTab("test");
-                      }}
-                    />
-                  )}
-                  {mlPipelineTab === "test" && (
-                    <TestingView
-                      projectId={projectId || ""}
-                      architecture={mlArch}
-                      inferenceJobId={
-                        inferenceJobOverride ??
-                        (typeof project?.mlActiveTrainingJobId === "string" && project.mlActiveTrainingJobId
-                          ? project.mlActiveTrainingJobId
-                          : undefined)
-                      }
-                    />
-                  )}
-                </div>
+                <h2 style={{ fontSize: 24, fontWeight: 700, color: "#F2F2F0", marginBottom: 12 }}>Hardware Incompatible</h2>
+                <p style={{ fontSize: 14, color: "rgba(242,242,240,0.6)", lineHeight: 1.6, marginBottom: 24 }}>
+                  The selected board (<strong>{currentBoard.name}</strong>) does not have the necessary hardware acceleration or memory to run Machine Learning tasks.
+                  <br /><br />
+                  To use the AI Workspace, please select an <strong>ESP32-S3</strong>, <strong>ESP32-CAM</strong>, or <strong>Arduino Nano ESP32</strong>.
+                </p>
+                <button
+                  onClick={() => setViewMode("blocks")}
+                  className="btn-primary"
+                  style={{ padding: "10px 24px" }}
+                >
+                  Back to Workspace
+                </button>
               </div>
+            </div>
+          )}
+
+          <div style={{ width: "min(1440px, 100%)", background: "#1A0628", borderRadius: 12, border: "1px solid rgba(157,39,222,0.3)", display: "flex", flexDirection: "column", opacity: isMlSupported ? 1 : 0.4 }}>
+            <div style={{ padding: "10px 16px", borderBottom: "1px solid rgba(157,39,222,0.15)", background: "rgba(157,39,222,0.05)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <h2 style={{ fontSize: 16, fontWeight: 700, color: "#F2F2F0", display: "flex", alignItems: "center", gap: 8 }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9D27DE" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z" /><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z" /></svg>
+                ML Pipeline
+              </h2>
+              <div style={{ display: "flex", background: "rgba(0,0,0,0.25)", borderRadius: 8, padding: 3, border: "1px solid rgba(157,39,222,0.15)", gap: 4 }}>
+                <button
+                  onClick={() => setMlPipelineTab("collect")}
+                  style={{
+                    border: "none",
+                    padding: "6px 10px",
+                    borderRadius: 6,
+                    fontSize: 11,
+                    cursor: "pointer",
+                    background: mlPipelineTab === "collect" ? "rgba(157,39,222,0.2)" : "transparent",
+                    color: mlPipelineTab === "collect" ? "#F2F2F0" : "rgba(242,242,240,0.45)",
+                  }}
+                >
+                  Data Collection
+                </button>
+                <button
+                  onClick={() => setMlPipelineTab("train")}
+                  style={{
+                    border: "none",
+                    padding: "6px 10px",
+                    borderRadius: 6,
+                    fontSize: 11,
+                    cursor: "pointer",
+                    background: mlPipelineTab === "train" ? "rgba(157,39,222,0.2)" : "transparent",
+                    color: mlPipelineTab === "train" ? "#F2F2F0" : "rgba(242,242,240,0.45)",
+                  }}
+                >
+                  Training
+                </button>
+                <button
+                  onClick={() => setMlPipelineTab("versions")}
+                  style={{
+                    border: "none",
+                    padding: "6px 10px",
+                    borderRadius: 6,
+                    fontSize: 11,
+                    cursor: "pointer",
+                    background: mlPipelineTab === "versions" ? "rgba(157,39,222,0.2)" : "transparent",
+                    color: mlPipelineTab === "versions" ? "#F2F2F0" : "rgba(242,242,240,0.45)",
+                  }}
+                >
+                  Versions
+                </button>
+                <button
+                  onClick={() => setMlPipelineTab("test")}
+                  style={{
+                    border: "none",
+                    padding: "6px 10px",
+                    borderRadius: 6,
+                    fontSize: 11,
+                    cursor: "pointer",
+                    background: mlPipelineTab === "test" ? "rgba(157,39,222,0.2)" : "transparent",
+                    color: mlPipelineTab === "test" ? "#F2F2F0" : "rgba(242,242,240,0.45)",
+                  }}
+                >
+                  Inference Testing
+                </button>
+              </div>
+            </div>
+
+            <div style={{ flex: 1, overflow: "auto", position: "relative" }}>
+              {mlPipelineTab === "collect" && (
+                <DataCollection projectId={projectId || ""} boardId={project?.board || "esp32-wroom"} task={mlTask} architecture={mlArch} />
+              )}
+              {mlPipelineTab === "train" && (
+                <TrainingView projectId={projectId || ""} boardId={project?.board || "esp32-wroom"} task={mlTask} setTask={setMlTask} selectedArch={mlArch} setSelectedArch={setMlArch} onGoToCollect={() => setMlPipelineTab("collect")} canStartTraining={canStartTraining} trainingBlockReason={trainingBlockReason} incrementTrainingCount={incrementTrainingCount} />
+              )}
+              {mlPipelineTab === "versions" && projectId && (
+                <ModelRegistry
+                  projectId={projectId}
+                  pipelineArchitecture={mlArch}
+                  activeJobId={project?.mlActiveTrainingJobId ?? null}
+                  onTestModel={(jobId) => {
+                    setInferenceJobOverride(jobId);
+                    setMlPipelineTab("test");
+                  }}
+                />
+              )}
+              {mlPipelineTab === "test" && (
+                <TestingView
+                  projectId={projectId || ""}
+                  architecture={mlArch}
+                  inferenceJobId={
+                    inferenceJobOverride ??
+                    (typeof project?.mlActiveTrainingJobId === "string" && project.mlActiveTrainingJobId
+                      ? project.mlActiveTrainingJobId
+                      : undefined)
+                  }
+                />
+              )}
+            </div>
           </div>
+        </div>
       )}
 
       {/* ── ML Pipeline Onboarding Popup ──────────────── */}
@@ -2018,23 +2018,23 @@ export default function IDEPage() {
       {/* ESP32-CAM Setup Wizard Modal */}
       {showCamWizard && (
         <div style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.8)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-           <div style={{ background: "#1A0628", border: "1px solid #9D27DE", borderRadius: 8, padding: 24, width: 400, maxWidth: "90%" }}>
-              <h2 style={{ color: "#F2F2F0", fontWeight: 700, fontSize: 18, marginBottom: 12 }}>ESP32-CAM Flash Mode</h2>
-              <p style={{ color: "rgba(242,242,240,0.7)", fontSize: 13, marginBottom: 20 }}>
-                The ESP32-CAM does not have a native USB port or auto-reset circuitry. 
-                In order to write the new firmware over the FTDI programmer:
-              </p>
-              <ol style={{ color: "#E0D8F0", fontSize: 13, paddingLeft: 16, lineHeight: 1.6, marginBottom: 24 }}>
-                <li>Connect <b>GPIO 0</b> to <b>GND</b></li>
-                <li>Press the <b>RST</b> (Reset) button on the board</li>
-                <li>Release the <b>RST</b> button</li>
-                <li>Click the "Continue Flash" button below</li>
-              </ol>
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                 <button className="btn-ghost" onClick={() => setShowCamWizard(false)}>Cancel</button>
-                 <button className="btn-primary" onClick={() => performSerialFlash(getBoardConfig("esp32-cam"))}>Continue Flash</button>
-              </div>
-           </div>
+          <div style={{ background: "#1A0628", border: "1px solid #9D27DE", borderRadius: 8, padding: 24, width: 400, maxWidth: "90%" }}>
+            <h2 style={{ color: "#F2F2F0", fontWeight: 700, fontSize: 18, marginBottom: 12 }}>ESP32-CAM Flash Mode</h2>
+            <p style={{ color: "rgba(242,242,240,0.7)", fontSize: 13, marginBottom: 20 }}>
+              The ESP32-CAM does not have a native USB port or auto-reset circuitry.
+              In order to write the new firmware over the FTDI programmer:
+            </p>
+            <ol style={{ color: "#E0D8F0", fontSize: 13, paddingLeft: 16, lineHeight: 1.6, marginBottom: 24 }}>
+              <li>Connect <b>GPIO 0</b> to <b>GND</b></li>
+              <li>Press the <b>RST</b> (Reset) button on the board</li>
+              <li>Release the <b>RST</b> button</li>
+              <li>Click the "Continue Flash" button below</li>
+            </ol>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button className="btn-ghost" onClick={() => setShowCamWizard(false)}>Cancel</button>
+              <button className="btn-primary" onClick={() => performSerialFlash(getBoardConfig("esp32-cam"))}>Continue Flash</button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -2085,47 +2085,47 @@ export default function IDEPage() {
 
       {/* Custom Variable Prompt Dialog */}
       {promptDialog && (
-         <div style={{ position: "fixed", inset: 0, zIndex: 300, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)" }}
-              onClick={() => { promptDialog.callback(null); setPromptDialog(null); }}
-         >
-            <div style={{ background: "#12031C", border: "1px solid #9D27DE", borderRadius: 12, padding: 32, width: 400, maxWidth: "90%", boxShadow: "0 24px 50px rgba(0,0,0,0.5)" }}
-                 onClick={(e) => e.stopPropagation()}
-            >
-               <h2 style={{ color: "#F2F2F0", fontWeight: 700, fontSize: 18, marginBottom: 16 }}>
-                 {promptDialog.message}
-               </h2>
-               <input
-                 type="text"
-                 className="input"
-                 defaultValue={promptDialog.defaultValue}
-                 style={{ width: "100%", boxSizing: "border-box" }}
-                 onKeyDown={(e) => {
-                   if (e.key === "Enter") {
-                     promptDialog.callback(e.currentTarget.value);
-                     setPromptDialog(null);
-                   } else if (e.key === "Escape") {
-                     promptDialog.callback(null);
-                     setPromptDialog(null);
-                   }
-                 }}
-                ref={(input) => {
-                  if (input) setTimeout(() => input.focus(), 10);
-                }}
-               />
-               <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, marginTop: 24 }}>
-                 <button className="btn-secondary" onClick={() => { promptDialog.callback(null); setPromptDialog(null); }}>
-                   Cancel
-                 </button>
-                 <button className="btn-primary" onClick={(e) => {
-                   const val = (e.currentTarget.parentElement?.previousElementSibling as HTMLInputElement).value;
-                   promptDialog.callback(val);
-                   setPromptDialog(null);
-                 }}>
-                   OK
-                 </button>
-               </div>
+        <div style={{ position: "fixed", inset: 0, zIndex: 300, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)" }}
+          onClick={() => { promptDialog.callback(null); setPromptDialog(null); }}
+        >
+          <div style={{ background: "#12031C", border: "1px solid #9D27DE", borderRadius: 12, padding: 32, width: 400, maxWidth: "90%", boxShadow: "0 24px 50px rgba(0,0,0,0.5)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 style={{ color: "#F2F2F0", fontWeight: 700, fontSize: 18, marginBottom: 16 }}>
+              {promptDialog.message}
+            </h2>
+            <input
+              type="text"
+              className="input"
+              defaultValue={promptDialog.defaultValue}
+              style={{ width: "100%", boxSizing: "border-box" }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  promptDialog.callback(e.currentTarget.value);
+                  setPromptDialog(null);
+                } else if (e.key === "Escape") {
+                  promptDialog.callback(null);
+                  setPromptDialog(null);
+                }
+              }}
+              ref={(input) => {
+                if (input) setTimeout(() => input.focus(), 10);
+              }}
+            />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, marginTop: 24 }}>
+              <button className="btn-secondary" onClick={() => { promptDialog.callback(null); setPromptDialog(null); }}>
+                Cancel
+              </button>
+              <button className="btn-primary" onClick={(e) => {
+                const val = (e.currentTarget.parentElement?.previousElementSibling as HTMLInputElement).value;
+                promptDialog.callback(val);
+                setPromptDialog(null);
+              }}>
+                OK
+              </button>
             </div>
-         </div>
+          </div>
+        </div>
       )}
 
       {/* ── Status Bar ───────────────────────────────────── */}
@@ -2166,8 +2166,8 @@ function CodeHighlight({ code }: { code: string }) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
-    
-  html = html.replace(/(\/\/.*)|("[^"]*")|\b(void|int|float|bool|char|String|const|return|if|else|for|while|do|include|define)\b|\b(setup|loop|Serial|pinMode|digitalWrite|digitalRead|analogWrite|analogRead|delay|millis)\b|\b(\d+)\b/g, 
+
+  html = html.replace(/(\/\/.*)|("[^"]*")|\b(void|int|float|bool|char|String|const|return|if|else|for|while|do|include|define)\b|\b(setup|loop|Serial|pinMode|digitalWrite|digitalRead|analogWrite|analogRead|delay|millis)\b|\b(\d+)\b/g,
     (match, comment, str, kw1, kw2, num) => {
       if (comment) return `<span style="color:#6B7280">${comment}</span>`;
       if (str) return `<span style="color:#38A169">${str}</span>`;
@@ -2223,13 +2223,13 @@ function BoardInfo({ boardId }: { boardId: string }) {
           </div>
         ))}
         {info.notes && (
-           <div style={{
-             marginTop: 12, padding: "8px", background: "rgba(245, 101, 101, 0.1)",
-             border: "1px solid rgba(245, 101, 101, 0.2)", borderRadius: "6px",
-             fontSize: 10, color: "#FCA5A5"
-           }}>
-             <span style={{ fontWeight: 600 }}>Note:</span> {info.notes}
-           </div>
+          <div style={{
+            marginTop: 12, padding: "8px", background: "rgba(245, 101, 101, 0.1)",
+            border: "1px solid rgba(245, 101, 101, 0.2)", borderRadius: "6px",
+            fontSize: 10, color: "#FCA5A5"
+          }}>
+            <span style={{ fontWeight: 600 }}>Note:</span> {info.notes}
+          </div>
         )}
       </div>
     </div>

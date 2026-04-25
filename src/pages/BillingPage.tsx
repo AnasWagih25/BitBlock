@@ -1,66 +1,44 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import { PLAN_ORDER, PLANS, formatJobTime, formatStorageSize, type PlanId } from "../lib/plans";
+import { PLANS, PLAN_ORDER, type PlanId, formatStorageSize } from "../lib/plans";
 import { useAuth } from "../contexts/AuthContext";
 import { useAppDialog } from "../contexts/DialogContext";
+import { useUsage } from "../hooks/useUsage";
 import { auth } from "../lib/firebase";
-import { Check, ChevronDown, Zap, Shield, Cpu, BarChart3, HardDrive, Rocket, ArrowLeft } from "lucide-react";
+import {
+  ArrowLeft, Crown, Zap, Shield, CreditCard, ArrowUpRight,
+  BarChart3, Cpu, HardDrive, Rocket, ExternalLink,
+} from "lucide-react";
 
-/* ── FAQ Data ─────────────────────────────────────────────── */
-const faqs = [
-  { q: "Can I switch plans at any time?", a: "Yes — upgrade or downgrade from your Billing page instantly. When upgrading, you'll be prorated for the remainder of your billing cycle." },
-  { q: "What happens when I hit a limit?", a: "You'll see a friendly notification. Compiles and training jobs pause until the next day/month resets, or you can upgrade for immediate access." },
-  { q: "Is there a free trial for paid plans?", a: "Every account starts on the Free plan with no time limit. You can explore the IDE, compile code, and train small models before committing." },
-  { q: "How does Team billing work?", a: "Team is priced per seat. Each member gets their own limits, but storage is shared across the team workspace." },
-  { q: "Can I cancel anytime?", a: "Absolutely. Cancel from your Billing page — you'll keep your paid features until the end of the current billing period." },
-];
-
-/* ── Comparison Categories ────────────────────────────────── */
-const comparisonRows: { label: string; icon: React.ReactNode; key: string; format: (plan: typeof PLANS.free) => string }[] = [
-  { label: "Compiles / day", icon: <Zap size={15} />, key: "compilesPerDay", format: (p) => `${p.compilesPerDay}` },
-  { label: "Compiles / month", icon: <BarChart3 size={15} />, key: "compilesPerMonth", format: (p) => p.compilesPerMonth === null ? "Unlimited" : `${p.compilesPerMonth}` },
-  { label: "Training jobs / month", icon: <Cpu size={15} />, key: "trainingJobsPerMonth", format: (p) => `${p.trainingJobsPerMonth}` },
-  { label: "Max job duration", icon: <Rocket size={15} />, key: "maxJobTimeSeconds", format: (p) => formatJobTime(p.maxJobTimeSeconds) },
-  { label: "Dataset storage", icon: <HardDrive size={15} />, key: "datasetStorageBytes", format: (p) => formatStorageSize(p.datasetStorageBytes) },
-  { label: "Model storage", icon: <HardDrive size={15} />, key: "modelStorageBytes", format: (p) => formatStorageSize(p.modelStorageBytes) },
-  { label: "Deployed models", icon: <Shield size={15} />, key: "deployedModels", format: (p) => p.deployedModels === 0 ? "—" : `${p.deployedModels}` },
-];
-
-/* ── FAQ Accordion Item ───────────────────────────────────── */
-function FaqItem({ q, a }: { q: string; a: string }) {
-  const [open, setOpen] = useState(false);
+/* ── Usage Bar ────────────────────────────────────────────── */
+function UsageBar({ label, used, max, color, text, icon }: {
+  label: string; used: number | null; max: number | null; color: string; text?: string; icon?: React.ReactNode;
+}) {
+  const pct = used != null && max != null ? Math.min(100, (used / max) * 100) : 0;
+  const warn = pct > 85;
   return (
-    <div
-      style={{
-        borderBottom: "1px solid rgba(157,39,222,0.12)",
-        cursor: "pointer",
-        userSelect: "none",
-      }}
-      onClick={() => setOpen(!open)}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "20px 0" }}>
-        <span style={{ fontSize: 15, fontWeight: 600, color: "#F2F2F0" }}>{q}</span>
-        <ChevronDown
-          size={18}
-          style={{
-            color: "rgba(242,242,240,0.4)",
-            transition: "transform 0.3s ease",
-            transform: open ? "rotate(180deg)" : "rotate(0)",
-            flexShrink: 0,
-            marginLeft: 16,
-          }}
-        />
+    <div style={{
+      background: "rgba(0,0,0,0.25)", borderRadius: 14, padding: "16px 18px",
+      border: "1px solid rgba(255,255,255,0.05)",
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <span style={{ fontSize: 12, color: "rgba(242,242,240,0.5)", fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
+          {icon}{label}
+        </span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: warn ? "#f87171" : "#F2F2F0" }}>
+          {text || `${used ?? 0} / ${max ?? "∞"}`}
+        </span>
       </div>
-      <div
-        style={{
-          overflow: "hidden",
-          maxHeight: open ? 200 : 0,
-          transition: "max-height 0.35s ease, opacity 0.3s ease",
-          opacity: open ? 1 : 0,
-        }}
-      >
-        <p style={{ fontSize: 14, color: "rgba(242,242,240,0.55)", lineHeight: 1.7, paddingBottom: 20 }}>{a}</p>
-      </div>
+      {used != null && max != null && (
+        <div style={{ height: 6, borderRadius: 3, background: "rgba(255,255,255,0.06)" }}>
+          <div style={{
+            height: 6, borderRadius: 3, width: `${pct}%`,
+            transition: "width 0.5s cubic-bezier(0.23,1,0.32,1)",
+            background: warn ? "linear-gradient(90deg, #EF4444, #f87171)" : `linear-gradient(90deg, ${color}, ${color}cc)`,
+            boxShadow: warn ? "0 0 12px rgba(239,68,68,0.4)" : `0 0 10px ${color}40`,
+          }} />
+        </div>
+      )}
     </div>
   );
 }
@@ -69,199 +47,30 @@ function FaqItem({ q, a }: { q: string; a: string }) {
 export default function BillingPage() {
   const { user, userPlan, signOut, isAdmin } = useAuth();
   const { alert } = useAppDialog();
-  const [annual, setAnnual] = useState(false);
-  const [visibleCards, setVisibleCards] = useState<Set<number>>(new Set());
-  const cardsRef = useRef<(HTMLDivElement | null)[]>([]);
-
-  const [updating, setUpdating] = useState<PlanId | null>(null);
   const currentPlan = (userPlan || "free") as PlanId;
+  const plan = PLANS[currentPlan];
+  const { usage } = useUsage(user?.uid, userPlan);
+  const [cancelling, setCancelling] = useState(false);
 
-  const savingsLabel = useMemo(() => {
-    if (currentPlan === "free") return "Upgrade to unlock more compiles and training.";
-    if (currentPlan === "team") return "You are on the highest available plan.";
-    return "Need more limits? Move to a higher tier instantly.";
-  }, [currentPlan]);
+  const currentIdx = PLAN_ORDER.indexOf(currentPlan);
 
-  /* Intersection observer for card entrance animations */
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            const idx = Number(entry.target.getAttribute("data-idx"));
-            setVisibleCards((prev) => new Set(prev).add(idx));
-          }
-        });
-      },
-      { threshold: 0.15 }
-    );
-    cardsRef.current.forEach((el) => el && observer.observe(el));
-    return () => observer.disconnect();
-  }, []);
-
-  const startCheckout = async (nextPlan: PlanId) => {
-    if (!user) return;
-    if (nextPlan === currentPlan) return;
-    setUpdating(nextPlan);
+  const handleCancel = async () => {
+    if (currentPlan === "free") return;
+    setCancelling(true);
     try {
       const token = await auth.currentUser?.getIdToken();
       if (!token) throw new Error("Missing auth token");
-      const res = await fetch("/.netlify/functions/create-paddle-checkout", {
+      const res = await fetch("/.netlify/functions/cancel-paddle-subscription", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ planId: nextPlan }),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data?.checkoutUrl) {
-        throw new Error(data?.error || "Could not create Paddle checkout");
-      }
-      window.location.href = data.checkoutUrl as string;
+      if (!res.ok) throw new Error(data?.error || "Could not cancel subscription");
+      await alert("Your subscription has been cancelled. You'll keep access until the end of your current billing period.");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Unknown error";
-      await alert(`Could not start checkout. ${msg}`);
-    } finally {
-      setUpdating(null);
-    }
-  };
-
-  const displayPrice = (plan: typeof PLANS.free) => {
-    if (plan.price === 0) return "Free";
-    const p = annual ? Math.round(plan.price * 10) / 12 : plan.price;
-    return `$${p % 1 === 0 ? p : p.toFixed(2)}`;
-  };
-
-  const renderPlanCard = (id: PlanId, idx: number, extraStyle: React.CSSProperties = {}) => {
-    const plan = PLANS[id];
-    const popular = id === "pro";
-    const visible = visibleCards.has(idx);
-    const isCurrent = id === currentPlan;
-
-    return (
-      <div
-        key={id}
-        ref={(el) => { cardsRef.current[idx] = el; }}
-        data-idx={idx}
-        style={{
-          borderRadius: 24,
-          border: isCurrent ? `2px solid ${plan.color}` : popular ? "1.5px solid rgba(157,39,222,0.6)" : "1px solid rgba(255,255,255,0.08)",
-          background: isCurrent
-            ? `linear-gradient(170deg, ${plan.color}20 0%, rgba(16,4,24,0.95) 50%)`
-            : popular
-            ? "linear-gradient(170deg, rgba(157,39,222,0.2) 0%, rgba(16,4,24,0.95) 50%)"
-            : "linear-gradient(170deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)",
-          boxShadow: isCurrent ? `0 24px 60px ${plan.color}30, 0 0 0 1px ${plan.color}20 inset` : popular ? "0 24px 60px rgba(157,39,222,0.25), 0 0 0 1px rgba(157,39,222,0.1) inset" : "0 12px 40px rgba(0,0,0,0.3)",
-          padding: "32px 24px 28px",
-          position: "relative",
-          overflow: "hidden",
-          backdropFilter: "blur(12px)",
-          transform: visible ? (popular ? "translateY(-12px) scale(1)" : "translateY(0) scale(1)") : "translateY(30px) scale(0.97)",
-          opacity: visible ? 1 : 0,
-          transition: `all 0.6s cubic-bezier(0.23, 1, 0.32, 1) ${idx * 0.1}s`,
-          display: "flex",
-          flexDirection: "column",
-          textAlign: "left",
-          ...extraStyle
-        }}
-      >
-        {/* Decorative glow orb */}
-        <div style={{
-          position: "absolute", width: 200, height: 200, right: -80, top: -80, borderRadius: "50%",
-          background: popular
-            ? "radial-gradient(circle, rgba(157,39,222,0.3), transparent 70%)"
-            : `radial-gradient(circle, ${plan.color}18, transparent 70%)`,
-          pointerEvents: "none",
-        }} />
-
-        {/* Popular badge */}
-        {popular && !isCurrent && (
-          <div style={{
-            position: "absolute", top: 0, left: 0, right: 0, height: 3,
-            background: "linear-gradient(90deg, #9D27DE, #B94FF0, #9D27DE)",
-            borderRadius: "24px 24px 0 0",
-          }} />
-        )}
-        {popular && !isCurrent && (
-          <span style={{
-            position: "absolute", top: 16, right: 16,
-            fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em",
-            background: "linear-gradient(135deg, rgba(157,39,222,0.3), rgba(185,79,240,0.2))",
-            border: "1px solid rgba(157,39,222,0.5)", color: "#E9D5FF",
-            borderRadius: 999, padding: "5px 12px",
-          }}>
-            ⭐ Most Popular
-          </span>
-        )}
-
-        {/* Plan icon & name */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
-          <div>
-            <div style={{ fontSize: 28, marginBottom: 4 }}>{plan.icon}</div>
-            <h2 style={{ margin: 0, color: "#F2F2F0", fontSize: 22, fontWeight: 700 }}>{plan.name}</h2>
-          </div>
-          {isCurrent && (
-            <span style={{ fontSize: 11, fontWeight: 700, color: plan.color, border: `1px solid ${plan.color}66`, background: `${plan.color}20`, borderRadius: 999, padding: "4px 10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-              Current
-            </span>
-          )}
-        </div>
-
-        {/* Price */}
-        <div style={{ marginTop: 0, marginBottom: 20 }}>
-          <span style={{ fontSize: 40, fontWeight: 800, color: "#F2F2F0", letterSpacing: "-0.03em" }}>
-            {displayPrice(plan)}
-          </span>
-          {plan.price > 0 && (
-            <span style={{ fontSize: 14, color: "rgba(242,242,240,0.4)", marginLeft: 4 }}>
-              /{id === "team" ? "seat/mo" : "mo"}
-            </span>
-          )}
-          {annual && plan.price > 0 && (
-            <div style={{ fontSize: 12, color: "#4ade80", marginTop: 4 }}>
-              Save ${Math.round(plan.price * 12 - plan.price * 10)}/yr
-            </div>
-          )}
-        </div>
-
-        {/* Divider */}
-        <div style={{ height: 1, background: "linear-gradient(90deg, transparent, rgba(157,39,222,0.2), transparent)", marginBottom: 20 }} />
-
-        {/* Features */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 12, flex: 1 }}>
-          {plan.features.map((feature) => (
-            <div key={feature} style={{ display: "flex", gap: 10, alignItems: "flex-start", fontSize: 13, color: "rgba(242,242,240,0.78)" }}>
-              <div style={{
-                width: 18, height: 18, borderRadius: "50%", flexShrink: 0, marginTop: 1,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                background: `${plan.color}18`, border: `1px solid ${plan.color}30`,
-              }}>
-                <Check size={11} color={plan.color} strokeWidth={3} />
-              </div>
-              <span>{feature}</span>
-            </div>
-          ))}
-        </div>
-
-        {/* CTA Button */}
-        <button
-          onClick={() => startCheckout(id)}
-          disabled={isCurrent || updating !== null}
-          className={isCurrent ? "btn-ghost" : "btn-primary"}
-          style={{
-            width: "100%", justifyContent: "center", marginTop: 24,
-            padding: "14px 24px", fontSize: 14,
-            opacity: isCurrent ? 0.75 : 1,
-            cursor: isCurrent || updating !== null ? "not-allowed" : "pointer",
-            ...(popular && !isCurrent ? { boxShadow: "0 8px 30px rgba(157,39,222,0.35)" } : {}),
-            ...(!isCurrent && !popular ? { background: "#fff", color: "#000" } : {})
-          }}
-        >
-          {isCurrent ? "Current Plan" : updating === id ? "Redirecting..." : `Subscribe to ${plan.name}`}
-        </button>
-      </div>
-    );
+      await alert(`Cancellation failed. ${msg}`);
+    } finally { setCancelling(false); }
   };
 
   return (
@@ -286,12 +95,7 @@ export default function BillingPage() {
               { label: "Marketplace", to: "/marketplace" },
               { label: "Pricing", to: "/pricing" },
             ].map((item) => (
-              <Link key={item.label} to={item.to} className="btn-ghost" style={{
-                color: item.to === "/billing" ? "#9D27DE" : undefined,
-                background: item.to === "/billing" ? "rgba(157,39,222,0.1)" : undefined,
-              }}>
-                {item.label}
-              </Link>
+              <Link key={item.label} to={item.to} className="btn-ghost">{item.label}</Link>
             ))}
             {isAdmin && (
               <Link to="/admin" className="btn-ghost" style={{ color: "#F59E0B" }}>Admin</Link>
@@ -304,139 +108,194 @@ export default function BillingPage() {
         </div>
       </nav>
 
-      {/* ── Hero Section ────────────────────────────────── */}
-      <section className="grid-bg" style={{
-        position: "relative",
-        overflow: "hidden",
-        textAlign: "center",
-        padding: "100px 40px 60px",
-      }}>
-        {/* Orbs */}
-        <div style={{ position: "absolute", top: "-10%", left: "20%", width: 500, height: 500, borderRadius: "50%", background: "radial-gradient(circle, rgba(157,39,222,0.18) 0%, transparent 70%)", filter: "blur(60px)", pointerEvents: "none" }} />
-        <div style={{ position: "absolute", bottom: "0%", right: "10%", width: 350, height: 350, borderRadius: "50%", background: "radial-gradient(circle, rgba(185,79,240,0.1) 0%, transparent 70%)", filter: "blur(50px)", pointerEvents: "none" }} />
-
-        <div style={{ position: "relative", zIndex: 1, maxWidth: 700, margin: "0 auto" }}>
-          
-          <Link to="/profile" style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "rgba(242,242,240,0.6)", textDecoration: "none", fontSize: 14, marginBottom: 24, padding: "8px 16px", borderRadius: 999, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", transition: "all 0.2s" }} onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "#fff"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; e.currentTarget.style.color = "rgba(242,242,240,0.6)"; }}>
+      {/* ── Header ─────────────────────────────────────── */}
+      <section className="grid-bg" style={{ position: "relative", overflow: "hidden", padding: "48px 40px 40px" }}>
+        <div style={{ position: "absolute", top: "-15%", left: "15%", width: 450, height: 450, borderRadius: "50%", background: "radial-gradient(circle, rgba(157,39,222,0.15) 0%, transparent 70%)", filter: "blur(50px)", pointerEvents: "none" }} />
+        <div style={{ maxWidth: 800, margin: "0 auto", position: "relative", zIndex: 1 }}>
+          <Link to="/profile" style={{
+            display: "inline-flex", alignItems: "center", gap: 6,
+            color: "rgba(242,242,240,0.6)", textDecoration: "none", fontSize: 14,
+            marginBottom: 24, padding: "8px 16px", borderRadius: 999,
+            background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
+            transition: "all 0.2s",
+          }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "#fff"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; e.currentTarget.style.color = "rgba(242,242,240,0.6)"; }}
+          >
             <ArrowLeft size={16} /> Back to Profile
           </Link>
-
           <h1 style={{
-            fontFamily: "Superstar, fantasy",
-            fontSize: "clamp(32px, 5vw, 56px)",
-            lineHeight: 1.1,
-            letterSpacing: "0.05em",
-            color: "#F2F2F0",
-            marginBottom: 20,
+            fontFamily: "Superstar, fantasy", fontSize: "clamp(28px, 4vw, 44px)",
+            letterSpacing: "0.05em", color: "#F2F2F0", marginBottom: 8,
           }}>
             MANAGE <span className="gradient-text">BILLING</span>
           </h1>
-          <p style={{ fontSize: 17, color: "rgba(242,242,240,0.55)", lineHeight: 1.7, maxWidth: 520, margin: "0 auto 36px" }}>
-            {savingsLabel}
+          <p style={{ fontSize: 15, color: "rgba(242,242,240,0.5)", margin: 0 }}>
+            View your subscription, usage, and manage your plan.
           </p>
-
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 12, marginBottom: 36, padding: "12px 24px", borderRadius: 999, border: "1px solid rgba(157,39,222,0.4)", background: "rgba(157,39,222,0.1)", boxShadow: "0 0 20px rgba(157,39,222,0.15)" }}>
-            <Zap size={18} color="#E9D5FF" />
-            <span style={{ color: "#E9D5FF", fontSize: 15, fontWeight: 500 }}>
-              Current plan: <strong style={{ color: "#fff" }}>{PLANS[currentPlan].name}</strong> · {PLANS[currentPlan].priceLabel}
-            </span>
-          </div>
-
-          <br />
-
-          {/* ── Billing Toggle ─────────────────────────── */}
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 14, background: "rgba(26,6,40,0.6)", border: "1px solid rgba(157,39,222,0.2)", borderRadius: 999, padding: "6px 8px" }}>
-            <span style={{ fontSize: 13, fontWeight: annual ? 400 : 700, color: annual ? "rgba(242,242,240,0.45)" : "#F2F2F0", padding: "6px 14px", borderRadius: 999, background: !annual ? "rgba(157,39,222,0.2)" : "transparent", cursor: "pointer", transition: "all 0.25s ease" }} onClick={() => setAnnual(false)}>Monthly</span>
-            <span style={{ fontSize: 13, fontWeight: annual ? 700 : 400, color: !annual ? "rgba(242,242,240,0.45)" : "#F2F2F0", padding: "6px 14px", borderRadius: 999, background: annual ? "rgba(157,39,222,0.2)" : "transparent", cursor: "pointer", transition: "all 0.25s ease", display: "flex", alignItems: "center", gap: 6 }} onClick={() => setAnnual(true)}>
-              Annual
-              <span style={{ fontSize: 10, background: "rgba(34,197,94,0.2)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.3)", borderRadius: 999, padding: "2px 7px", fontWeight: 700 }}>-17%</span>
-            </span>
-          </div>
         </div>
       </section>
 
-      {/* ── Plan Cards ──────────────────────────────────── */}
-      <section style={{ padding: "0 40px 80px", position: "relative", zIndex: 1 }}>
-        <div style={{ maxWidth: 1160, margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20, alignItems: "stretch", marginBottom: 60 }}>
-          {PLAN_ORDER.filter(id => id !== "team").map((id, idx) => renderPlanCard(id, idx))}
-        </div>
+      {/* ── Content ────────────────────────────────────── */}
+      <div style={{ maxWidth: 800, margin: "0 auto", padding: "32px 40px 80px" }}>
 
-        {/* Teams Section */}
-        <div style={{ maxWidth: 800, margin: "0 auto", textAlign: "center" }}>
-          <h2 style={{ fontSize: 32, fontWeight: 700, color: "#F2F2F0", margin: "0 0 12px" }}>For Teams & Organizations</h2>
-          <p style={{ color: "rgba(242,242,240,0.6)", fontSize: 16, margin: "0 0 32px" }}>
-            Scale your development with shared storage, expanded compile limits, and more powerful AI instances.
-          </p>
-          <div style={{ display: "flex", justifyContent: "center" }}>
-            {renderPlanCard("team", 3, { width: "100%", maxWidth: 450 })}
-          </div>
-        </div>
+        {/* ── Current Plan Card ─────────────────────────── */}
+        <div style={{
+          borderRadius: 20, padding: "32px",
+          border: `1.5px solid ${plan.color}50`,
+          background: `linear-gradient(170deg, ${plan.color}12 0%, rgba(16,4,24,0.95) 60%)`,
+          boxShadow: `0 20px 50px ${plan.color}18`,
+          marginBottom: 24, position: "relative", overflow: "hidden",
+        }}>
+          <div style={{
+            position: "absolute", width: 200, height: 200, right: -60, top: -60, borderRadius: "50%",
+            background: `radial-gradient(circle, ${plan.color}20, transparent 70%)`, pointerEvents: "none",
+          }} />
 
-        <p style={{ textAlign: "center", marginTop: 40, color: "rgba(242,242,240,0.4)", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-          Plan changes are activated securely via Paddle after payment confirmation.
-        </p>
-      </section>
-
-      {/* ── Feature Comparison Table ────────────────────── */}
-      <section style={{ padding: "60px 40px 80px" }}>
-        <div style={{ maxWidth: 1000, margin: "0 auto" }}>
-          <h2 style={{ fontFamily: "Superstar, fantasy", fontSize: "clamp(24px, 3vw, 36px)", letterSpacing: "0.05em", color: "#F2F2F0", textAlign: "center", marginBottom: 8 }}>
-            COMPARE <span className="gradient-text">PLANS</span>
-          </h2>
-          <p style={{ textAlign: "center", color: "rgba(242,242,240,0.45)", fontSize: 15, marginBottom: 48 }}>
-            See exactly what each tier includes
-          </p>
-
-          <div style={{ borderRadius: 20, border: "1px solid rgba(157,39,222,0.15)", overflow: "hidden", background: "rgba(26,6,40,0.3)" }}>
-            {/* Header row */}
-            <div style={{ display: "grid", gridTemplateColumns: "1.6fr repeat(4, 1fr)", borderBottom: "1px solid rgba(157,39,222,0.15)", background: "rgba(26,6,40,0.5)" }}>
-              <div style={{ padding: "16px 24px", fontSize: 13, fontWeight: 600, color: "rgba(242,242,240,0.4)" }}>Feature</div>
-              {PLAN_ORDER.map((id) => (
-                <div key={id} style={{ padding: "16px 12px", textAlign: "center" }}>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: PLANS[id].color }}>{PLANS[id].icon} {PLANS[id].name}</span>
-                </div>
-              ))}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, position: "relative", zIndex: 1 }}>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                <Crown size={20} color={plan.color} />
+                <span style={{ fontSize: 12, color: "rgba(242,242,240,0.45)", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.08em" }}>Current Plan</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+                <span style={{ fontSize: 36, fontWeight: 800, color: "#F2F2F0" }}>{plan.icon} {plan.name}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: plan.color, border: `1px solid ${plan.color}66`, background: `${plan.color}20`, borderRadius: 999, padding: "4px 12px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Active
+                </span>
+              </div>
             </div>
-            {/* Data rows */}
-            {comparisonRows.map((row, ri) => (
-              <div key={row.key} style={{
-                display: "grid", gridTemplateColumns: "1.6fr repeat(4, 1fr)",
-                borderBottom: ri < comparisonRows.length - 1 ? "1px solid rgba(157,39,222,0.08)" : "none",
-                transition: "background 0.15s ease",
-              }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(157,39,222,0.06)")}
-                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-              >
-                <div style={{ padding: "14px 24px", fontSize: 13, color: "rgba(242,242,240,0.7)", display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ color: "rgba(157,39,222,0.6)" }}>{row.icon}</span>
-                  {row.label}
-                </div>
-                {PLAN_ORDER.map((id) => (
-                  <div key={id} style={{ padding: "14px 12px", textAlign: "center", fontSize: 13, fontWeight: 600, color: id === "pro" ? "#E9D5FF" : "rgba(242,242,240,0.6)" }}>
-                    {row.format(PLANS[id])}
-                  </div>
-                ))}
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 32, fontWeight: 800, color: "#F2F2F0" }}>{plan.priceLabel}</div>
+              {plan.price > 0 && (
+                <div style={{ fontSize: 12, color: "rgba(242,242,240,0.4)", marginTop: 2 }}>billed monthly</div>
+              )}
+            </div>
+          </div>
+
+          {/* Plan features summary */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 24, position: "relative", zIndex: 1 }}>
+            {[
+              { label: "Compiles/day", value: `${plan.compilesPerDay}`, icon: <Zap size={14} /> },
+              { label: "Training jobs/mo", value: `${plan.trainingJobsPerMonth}`, icon: <Cpu size={14} /> },
+              { label: "Max job time", value: plan.maxJobTimeSeconds >= 60 ? `${Math.floor(plan.maxJobTimeSeconds / 60)} min` : `${plan.maxJobTimeSeconds}s`, icon: <Rocket size={14} /> },
+            ].map((s) => (
+              <div key={s.label} style={{
+                padding: "12px 14px", borderRadius: 12,
+                background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.05)",
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, color: "rgba(242,242,240,0.45)", fontSize: 11, marginBottom: 4 }}>{s.icon}{s.label}</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: "#F2F2F0" }}>{s.value}</div>
               </div>
             ))}
           </div>
-        </div>
-      </section>
 
-      {/* ── FAQ Section ─────────────────────────────────── */}
-      <section style={{ padding: "40px 40px 80px" }}>
-        <div style={{ maxWidth: 700, margin: "0 auto" }}>
-          <h2 style={{ fontFamily: "Superstar, fantasy", fontSize: "clamp(22px, 3vw, 32px)", letterSpacing: "0.05em", color: "#F2F2F0", textAlign: "center", marginBottom: 8 }}>
-            FREQUENTLY <span className="gradient-text">ASKED</span>
-          </h2>
-          <p style={{ textAlign: "center", color: "rgba(242,242,240,0.45)", fontSize: 15, marginBottom: 40 }}>
-            Everything you need to know about our plans
-          </p>
-          <div style={{ borderTop: "1px solid rgba(157,39,222,0.12)" }}>
-            {faqs.map((f) => <FaqItem key={f.q} q={f.q} a={f.a} />)}
+          {/* Actions */}
+          <div style={{ display: "flex", gap: 10, position: "relative", zIndex: 1 }}>
+            <Link to="/pricing" className="btn-primary" style={{ flex: 1, justifyContent: "center", padding: "12px 24px", fontSize: 14 }}>
+              {currentPlan === "free" ? "Upgrade Plan" : "Change Plan"} <ArrowUpRight size={14} />
+            </Link>
+            {currentPlan !== "free" && (
+              <button
+                onClick={handleCancel}
+                disabled={cancelling}
+                className="btn-ghost"
+                style={{
+                  padding: "12px 24px", fontSize: 13,
+                  color: "#f87171", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 999,
+                  cursor: cancelling ? "not-allowed" : "pointer",
+                }}
+              >
+                {cancelling ? "Cancelling..." : "Cancel Subscription"}
+              </button>
+            )}
           </div>
         </div>
-      </section>
+
+        {/* ── Usage Overview ───────────────────────────── */}
+        <div style={{
+          borderRadius: 20, padding: "28px",
+          border: "1px solid rgba(157,39,222,0.12)",
+          background: "linear-gradient(170deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01))",
+          marginBottom: 24,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
+            <Shield size={18} color="#9D27DE" />
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: "#F2F2F0", margin: 0 }}>Usage This Period</h2>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <UsageBar label="Compiles Today" used={usage.compilesToday} max={plan.compilesPerDay} color="#3B82F6" icon={<Zap size={12} />} />
+            <UsageBar label="Compiles This Month" used={usage.compilesThisMonth} max={plan.compilesPerMonth} color="#22C55E" icon={<BarChart3 size={12} />} />
+            <UsageBar label="Training Jobs" used={usage.trainingJobsThisMonth} max={plan.trainingJobsPerMonth} color="#9D27DE" icon={<Cpu size={12} />} />
+            <UsageBar label="Max Job Time" used={null} max={null} color="#F59E0B" text={plan.maxJobTimeSeconds >= 60 ? `${Math.floor(plan.maxJobTimeSeconds / 60)} min` : `${plan.maxJobTimeSeconds}s`} icon={<Rocket size={12} />} />
+            <UsageBar label="Dataset Storage" used={null} max={null} color="#3B82F6" text={formatStorageSize(plan.datasetStorageBytes)} icon={<HardDrive size={12} />} />
+            <UsageBar label="Model Storage" used={null} max={null} color="#F59E0B" text={formatStorageSize(plan.modelStorageBytes)} icon={<HardDrive size={12} />} />
+          </div>
+        </div>
+
+        {/* ── Plan Tiers Strip ─────────────────────────── */}
+        <div style={{
+          borderRadius: 20, padding: "28px",
+          border: "1px solid rgba(157,39,222,0.12)",
+          background: "linear-gradient(170deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01))",
+          marginBottom: 24,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
+            <CreditCard size={18} color="#9D27DE" />
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: "#F2F2F0", margin: 0 }}>Available Plans</h2>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+            {PLAN_ORDER.map((pid, i) => {
+              const p = PLANS[pid];
+              const active = pid === currentPlan;
+              const isUpgrade = i > currentIdx;
+              return (
+                <div key={pid} style={{
+                  borderRadius: 14, padding: "16px",
+                  border: active ? `1.5px solid ${p.color}` : "1px solid rgba(255,255,255,0.08)",
+                  background: active ? `${p.color}12` : "rgba(255,255,255,0.02)",
+                  transition: "all 0.2s ease",
+                  textAlign: "center",
+                }}>
+                  <div style={{ fontSize: 24, marginBottom: 6 }}>{p.icon}</div>
+                  <div style={{ fontSize: 14, color: "#F2F2F0", fontWeight: 700 }}>{p.name}</div>
+                  <div style={{ fontSize: 12, color: "rgba(242,242,240,0.45)", marginTop: 2, marginBottom: 10 }}>{p.priceLabel}</div>
+                  {active ? (
+                    <span style={{ fontSize: 10, color: p.color, fontWeight: 700, textTransform: "uppercase" }}>Current</span>
+                  ) : (
+                    <Link to="/pricing" style={{ fontSize: 11, color: isUpgrade ? "#9D27DE" : "rgba(242,242,240,0.4)", textDecoration: "none", fontWeight: 600 }}>
+                      {isUpgrade ? "Upgrade →" : "View →"}
+                    </Link>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ── Payment Info ─────────────────────────────── */}
+        <div style={{
+          borderRadius: 20, padding: "28px",
+          border: "1px solid rgba(157,39,222,0.12)",
+          background: "linear-gradient(170deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01))",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+            <ExternalLink size={18} color="#9D27DE" />
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: "#F2F2F0", margin: 0 }}>Payment & Invoices</h2>
+          </div>
+          <p style={{ fontSize: 13, color: "rgba(242,242,240,0.5)", lineHeight: 1.7, marginBottom: 16 }}>
+            Payments are processed securely through Paddle. You can manage payment methods, view invoices, and update billing details from the Paddle customer portal.
+          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "rgba(242,242,240,0.3)" }}>
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            </svg>
+            <span style={{ fontSize: 12, color: "rgba(242,242,240,0.35)" }}>
+              All transactions are encrypted and PCI-compliant via Paddle.
+            </span>
+          </div>
+        </div>
+      </div>
 
       {/* ── Footer ──────────────────────────────────────── */}
       <footer style={{

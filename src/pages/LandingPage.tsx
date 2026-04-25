@@ -86,6 +86,7 @@ export default function LandingPage() {
           <span className="badge badge-purple" style={{ marginLeft: 4 }}>BETA</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Link to="/pricing" className="btn-ghost">Pricing</Link>
           <Link to="/login" className="btn-ghost">Log In</Link>
           <Link to="/signup" className="btn-primary" style={{ padding: "9px 22px", fontSize: 13 }}>
             Get Started Free

@@ -1,4 +1,4 @@
-export type MLTask = "gesture" | "motion_anomaly" | "keyword_spotting" | "sound" | "sensor_anomaly" | "image_classification" | "object_detection";
+export type MLTask = "gesture" | "motion_anomaly" | "keyword_spotting" | "sound" | "sensor_anomaly" | "image_classification" | "object_detection" | "face_recognition";
 
 export interface MLHyperparameter {
   id: string;
@@ -64,8 +64,26 @@ const imageHyperparams: MLHyperparameter[] = [
   { id: "fine_tune_epochs", name: "Fine-Tune Epochs", type: "number", default: 2, min: 0, max: 40 },
 ];
 
+const faceHyperparams: MLHyperparameter[] = [
+  { id: "epochs", name: "Training Epochs", type: "number", default: 40, min: 5, max: 500 },
+  { id: "batch_size", name: "Batch Size", type: "number", default: 16, min: 1, max: 128 },
+  { id: "learning_rate", name: "Learning Rate", type: "select", default: 0.001, options: [
+      { label: "0.01 (Fast)", value: 0.01 },
+      { label: "0.001 (Recommended)", value: 0.001 },
+      { label: "0.0001 (Slow / Fine-tuning)", value: 0.0001 },
+      { label: "0.00001 (Micro)", value: 0.00001 }
+  ]},
+  { id: "embedding_dim", name: "Embedding Dimension", type: "select", default: 64, options: [
+      { label: "32 (Tiny — faster, less accurate)", value: 32 },
+      { label: "64 (Recommended)", value: 64 },
+      { label: "128 (Large — slower, more accurate)", value: 128 },
+  ]},
+  { id: "fine_tune_epochs", name: "Fine-Tune Epochs", type: "number", default: 5, min: 0, max: 30 },
+];
+
 export const ML_ARCHITECTURES: Record<string, MLArchitecture> = {
   "mobilenet_v1": { id: "mobilenet_v1", name: "MobileNetV1 INT8", type: "classification", recommendedInput: "Image", baseSizeKb: 450, inputResolution: { width: 96, height: 96 }, hyperparameters: mobileNetHyperparams },
+  "face_recognition": { id: "face_recognition", name: "MobileFaceNet-Nano", type: "classification", recommendedInput: "Image", baseSizeKb: 250, inputResolution: { width: 96, height: 96 }, hyperparameters: faceHyperparams },
   "fomo": { id: "fomo", name: "FOMO Object Detection", type: "detection", recommendedInput: "Image", baseSizeKb: 250, inputResolution: { width: 96, height: 96 }, hyperparameters: imageHyperparams },
   "cnn_1d_mfcc": { id: "cnn_1d_mfcc", name: "1D CNN on MFCC", type: "classification", recommendedInput: "Audio", baseSizeKb: 60, hyperparameters: sensorHyperparams },
   "ds_cnn": { id: "ds_cnn", name: "DS-CNN Keyword Spotting", type: "classification", recommendedInput: "Audio", baseSizeKb: 90, hyperparameters: sensorHyperparams },
@@ -76,6 +94,7 @@ export const ML_ARCHITECTURES: Record<string, MLArchitecture> = {
 
 export const TASK_ARCHITECTURES: Record<MLTask, string[]> = {
   "image_classification": ["mobilenet_v1"],
+  "face_recognition": ["face_recognition"],
   "object_detection": ["fomo"],
   "sound": ["cnn_1d_mfcc"],
   "keyword_spotting": ["ds_cnn"],

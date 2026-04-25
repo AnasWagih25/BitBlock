@@ -515,6 +515,88 @@ def build_autoencoder_tiny(input_length, learning_rate=0.001):
     return model
 
 
+def _inverted_residual_block(x, filters, expand_ratio=2, stride=1):
+    """MobileNetV2-style inverted residual: expand → depthwise → project."""
+    in_ch = int(x.shape[-1])
+    expanded = int(in_ch * expand_ratio)
+    shortcut = x
+
+    # Expand
+    if expand_ratio != 1:
+        x = layers.Conv2D(expanded, 1, padding="same", use_bias=False)(x)
+        x = layers.BatchNormalization()(x)
+        x = layers.ReLU(max_value=6)(x)
+
+    # Depthwise
+    x = layers.DepthwiseConv2D(3, strides=stride, padding="same", use_bias=False)(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.ReLU(max_value=6)(x)
+
+    # Project (linear bottleneck — no activation)
+    x = layers.Conv2D(filters, 1, padding="same", use_bias=False)(x)
+    x = layers.BatchNormalization()(x)
+
+    # Residual connection when dimensions match
+    if stride == 1 and in_ch == filters:
+        x = layers.Add()([shortcut, x])
+    return x
+
+
+def build_face_recognition(input_shape, num_classes, embedding_dim=64,
+                           learning_rate=0.001, dropout=0.2):
+    """
+    Face recognition via MobileNetV2 transfer learning for ESP32-CAM.
+
+    Uses ImageNet-pretrained MobileNetV2 (alpha=0.35) as the backbone so the
+    model starts with strong visual features instead of random weights. This
+    lets it learn to distinguish faces with just 10-30 images per person.
+
+    Architecture:
+      • MobileNetV2 α=0.35 backbone (frozen for initial training)
+      • 64-dim embedding head with BatchNorm
+      • Softmax classification (person labels)
+      • Heavy face-specific augmentation for small-dataset robustness
+
+    INT8 quantized: ~250-350KB TFLite | ~10 FPS on ESP32-CAM at 240 MHz.
+    """
+    # Pretrained backbone — freeze for head training, unfreeze later for fine-tuning
+    base = keras.applications.MobileNetV2(
+        input_shape=input_shape,
+        alpha=0.35,
+        include_top=False,
+        weights="imagenet",
+    )
+    for layer in base.layers:
+        layer.trainable = False
+
+    inputs = keras.Input(shape=input_shape)
+
+    # ── Face-specific augmentation (stripped during TFLite export) ──
+    x = layers.RandomFlip("horizontal")(inputs)
+    x = layers.RandomRotation(0.08)(x)
+    x = layers.RandomZoom((-0.1, 0.1))(x)
+
+    # ── Pretrained backbone ──
+    x = base(x)
+
+    # ── Face embedding head ──
+    x = layers.GlobalAveragePooling2D()(x)
+    x = layers.Dense(embedding_dim, use_bias=False)(x)
+    x = layers.BatchNormalization(name="embedding")(x)
+
+    # ── Classification head ──
+    x = layers.Dropout(dropout)(x)
+    outputs = layers.Dense(num_classes, activation="softmax")(x)
+
+    model = keras.Model(inputs, outputs)
+    model.compile(
+        optimizer=keras.optimizers.Adam(learning_rate=learning_rate),
+        loss=keras.losses.CategoricalCrossentropy(label_smoothing=0.02),
+        metrics=["accuracy"],
+    )
+    return model
+
+
 # ── TFLite Conversion ────────────────────────────────────────────
 
 def convert_to_tflite(model, X_representative=None):
@@ -574,6 +656,7 @@ const unsigned int {var_name}_len = {len(tflite_bytes)};
 
 ARCH_CONFIG = {
     "mobilenet_v1":      {"data": "image",   "res": (96, 96)},
+    "face_recognition":  {"data": "image",   "res": (96, 96)},
     "fomo":              {"data": "image_fomo", "res": (96, 96), "grid_stride": 8},
     "cnn_1d_mfcc":       {"data": "sensor",  "window": 50},
     "ds_cnn":            {"data": "sensor",  "window": 50},
@@ -611,12 +694,19 @@ def run_training(samples, labels, architecture, task, bucket, on_epoch=None, on_
         res = config.get("res", (96, 96))
         X, y, sample_meta = load_image_samples(samples, labels, target_size=res)
         input_shape = (*res, 3)
-        if architecture != "mobilenet_v1":
+        if architecture == "face_recognition":
+            embedding_dim = int(hyperparams.get("embedding_dim", 64))
+            model = build_face_recognition(
+                input_shape, num_classes, embedding_dim=embedding_dim,
+                learning_rate=learning_rate, dropout=dropout
+            )
+        elif architecture == "mobilenet_v1":
+            alpha = float(hyperparams.get("alpha", 0.25))
+            model = build_mobilenet_v1(
+                input_shape, num_classes, alpha=alpha, learning_rate=learning_rate, dropout=dropout
+            )
+        else:
             raise ValueError(f"No image model builder for: {architecture}")
-        alpha = float(hyperparams.get("alpha", 0.25))
-        model = build_mobilenet_v1(
-            input_shape, num_classes, alpha=alpha, learning_rate=learning_rate, dropout=dropout
-        )
 
     elif data_type == "image_fomo":
         res = tuple(config.get("res", (96, 96)))
@@ -744,7 +834,7 @@ def run_training(samples, labels, architecture, task, bucket, on_epoch=None, on_
     )
 
     # Lightweight fine-tuning for transfer models
-    if architecture == "mobilenet_v1" and fine_tune_epochs > 0:
+    if architecture in ("mobilenet_v1", "face_recognition") and fine_tune_epochs > 0:
         base_model = None
         for layer in model.layers:
             if isinstance(layer, keras.Model) and "mobilenet" in layer.name.lower():

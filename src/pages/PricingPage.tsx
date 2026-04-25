@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { PLAN_ORDER, PLANS, formatJobTime, formatStorageSize, type PlanId } from "../lib/plans";
 import { useAuth } from "../contexts/AuthContext";
+import { useAppDialog } from "../contexts/DialogContext";
+import { auth } from "../lib/firebase";
 import { Check, ChevronDown, Zap, Shield, Cpu, BarChart3, HardDrive, Rocket } from "lucide-react";
 
 /* ── FAQ Data ─────────────────────────────────────────────── */
@@ -65,11 +67,14 @@ function FaqItem({ q, a }: { q: string; a: string }) {
 
 /* ── Main Page ────────────────────────────────────────────── */
 export default function PricingPage() {
-  const { user, signOut, isAdmin } = useAuth();
+  const { user, userPlan, signOut, isAdmin } = useAuth();
+  const { alert } = useAppDialog();
   const navigate = useNavigate();
   const [annual, setAnnual] = useState(false);
   const [visibleCards, setVisibleCards] = useState<Set<number>>(new Set());
   const cardsRef = useRef<(HTMLDivElement | null)[]>([]);
+  const [updating, setUpdating] = useState<PlanId | null>(null);
+  const currentPlan = (userPlan || "free") as PlanId;
 
   /* Intersection observer for card entrance animations */
   useEffect(() => {
@@ -88,9 +93,30 @@ export default function PricingPage() {
     return () => observer.disconnect();
   }, []);
 
+  const startCheckout = async (nextPlan: PlanId) => {
+    if (!user) return;
+    if (nextPlan === currentPlan) return;
+    setUpdating(nextPlan);
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error("Missing auth token");
+      const res = await fetch("/.netlify/functions/create-paddle-checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ planId: nextPlan }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.checkoutUrl) throw new Error(data?.error || "Could not create Paddle checkout");
+      window.location.href = data.checkoutUrl as string;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      await alert(`Could not start checkout. ${msg}`);
+    } finally { setUpdating(null); }
+  };
+
   const choosePlan = (planId: PlanId) => {
+    if (user) { startCheckout(planId); return; }
     localStorage.setItem("signup_plan", planId);
-    if (user) { navigate("/billing"); return; }
     navigate("/signup");
   };
 
@@ -104,6 +130,7 @@ export default function PricingPage() {
     const plan = PLANS[id];
     const popular = id === "pro";
     const visible = visibleCards.has(idx);
+    const isCurrent = user ? id === currentPlan : false;
 
     return (
       <div
@@ -112,11 +139,13 @@ export default function PricingPage() {
         data-idx={idx}
         style={{
           borderRadius: 24,
-          border: popular ? "1.5px solid rgba(157,39,222,0.6)" : "1px solid rgba(255,255,255,0.08)",
-          background: popular
+          border: isCurrent ? `2px solid ${plan.color}` : popular ? "1.5px solid rgba(157,39,222,0.6)" : "1px solid rgba(255,255,255,0.08)",
+          background: isCurrent
+            ? `linear-gradient(170deg, ${plan.color}20 0%, rgba(16,4,24,0.95) 50%)`
+            : popular
             ? "linear-gradient(170deg, rgba(157,39,222,0.2) 0%, rgba(16,4,24,0.95) 50%)"
             : "linear-gradient(170deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)",
-          boxShadow: popular ? "0 24px 60px rgba(157,39,222,0.25), 0 0 0 1px rgba(157,39,222,0.1) inset" : "0 12px 40px rgba(0,0,0,0.3)",
+          boxShadow: isCurrent ? `0 24px 60px ${plan.color}30` : popular ? "0 24px 60px rgba(157,39,222,0.25), 0 0 0 1px rgba(157,39,222,0.1) inset" : "0 12px 40px rgba(0,0,0,0.3)",
           padding: "32px 24px 28px",
           position: "relative",
           overflow: "hidden",
@@ -140,14 +169,14 @@ export default function PricingPage() {
         }} />
 
         {/* Popular badge */}
-        {popular && (
+        {popular && !isCurrent && (
           <div style={{
             position: "absolute", top: 0, left: 0, right: 0, height: 3,
             background: "linear-gradient(90deg, #9D27DE, #B94FF0, #9D27DE)",
             borderRadius: "24px 24px 0 0",
           }} />
         )}
-        {popular && (
+        {popular && !isCurrent && (
           <span style={{
             position: "absolute", top: 16, right: 16,
             fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em",
@@ -160,11 +189,20 @@ export default function PricingPage() {
         )}
 
         {/* Plan icon & name */}
-        <div style={{ fontSize: 28, marginBottom: 4 }}>{plan.icon}</div>
-        <h2 style={{ margin: 0, color: "#F2F2F0", fontSize: 22, fontWeight: 700 }}>{plan.name}</h2>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+          <div>
+            <div style={{ fontSize: 28, marginBottom: 4 }}>{plan.icon}</div>
+            <h2 style={{ margin: 0, color: "#F2F2F0", fontSize: 22, fontWeight: 700 }}>{plan.name}</h2>
+          </div>
+          {isCurrent && (
+            <span style={{ fontSize: 11, fontWeight: 700, color: plan.color, border: `1px solid ${plan.color}66`, background: `${plan.color}20`, borderRadius: 999, padding: "4px 10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Current
+            </span>
+          )}
+        </div>
 
         {/* Price */}
-        <div style={{ marginTop: 16, marginBottom: 20 }}>
+        <div style={{ marginTop: 0, marginBottom: 20 }}>
           <span style={{ fontSize: 40, fontWeight: 800, color: "#F2F2F0", letterSpacing: "-0.03em" }}>
             {displayPrice(plan)}
           </span>
@@ -202,14 +240,17 @@ export default function PricingPage() {
         {/* CTA Button */}
         <button
           onClick={() => choosePlan(id)}
-          className={id === "free" ? "btn-secondary" : "btn-primary"}
+          disabled={isCurrent || updating !== null}
+          className={isCurrent ? "btn-ghost" : id === "free" && !user ? "btn-secondary" : "btn-primary"}
           style={{
             width: "100%", justifyContent: "center", marginTop: 24,
             padding: "14px 24px", fontSize: 14,
-            ...(popular ? { boxShadow: "0 8px 30px rgba(157,39,222,0.35)" } : {}),
+            opacity: isCurrent ? 0.75 : 1,
+            cursor: isCurrent || updating !== null ? "not-allowed" : "pointer",
+            ...(popular && !isCurrent ? { boxShadow: "0 8px 30px rgba(157,39,222,0.35)" } : {}),
           }}
         >
-          {id === "free" ? "Start Free" : `Choose ${plan.name}`}
+          {isCurrent ? "Current Plan" : updating === id ? "Redirecting..." : user ? `Subscribe to ${plan.name}` : id === "free" ? "Start Free" : `Choose ${plan.name}`}
         </button>
       </div>
     );
@@ -233,8 +274,7 @@ export default function PricingPage() {
           </Link>
           <div style={{ display: "flex", gap: 4 }}>
             {[
-              ...(user ? [{ label: "Projects", to: "/dashboard" }] : []),
-              { label: "Marketplace", to: "/marketplace" },
+              ...(user ? [{ label: "Projects", to: "/dashboard" }, { label: "Marketplace", to: "/marketplace" }] : []),
               { label: "Pricing", to: "/pricing" },
             ].map((item) => (
               <Link key={item.label} to={item.to} className="btn-ghost" style={{
