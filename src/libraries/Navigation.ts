@@ -1,4 +1,5 @@
 import { compiler } from "../compiler/assembler";
+import { getBoardConfig } from "../boards/registry";
 
 export function defineNavigationBlocks(Blockly: any) {
   const generator = Blockly.javascriptGenerator || Blockly.JavaScript;
@@ -18,10 +19,18 @@ export function defineNavigationBlocks(Blockly: any) {
     generator.forBlock["gps_init"] = function (block: any) {
       const rx = block.getFieldValue("RX");
       const tx = block.getFieldValue("TX");
+      // @ts-ignore
+      const bd = getBoardConfig(compiler.boardId);
       compiler.addInclude("#include <TinyGPS++.h>");
-      compiler.addInclude("#include <SoftwareSerial.h>");
-      compiler.addGlobal(`TinyGPSPlus gps;\nSoftwareSerial gpsSerial(${rx}, ${tx});`);
-      compiler.addSetup(`gpsSerial.begin(9600);`);
+      compiler.addGlobal(`TinyGPSPlus gps;`);
+      if (bd.platform === "esp32") {
+        compiler.addGlobal(`HardwareSerial gpsSerial(2);`);
+        compiler.addSetup(`gpsSerial.begin(9600, SERIAL_8N1, ${rx}, ${tx});`);
+      } else {
+        compiler.addInclude("#include <SoftwareSerial.h>");
+        compiler.addGlobal(`SoftwareSerial gpsSerial(${rx}, ${tx});`);
+        compiler.addSetup(`gpsSerial.begin(9600);`);
+      }
       compiler.addLoop(`while (gpsSerial.available() > 0) { gps.encode(gpsSerial.read()); }`);
       return "";
     };
@@ -120,7 +129,11 @@ export function defineNavigationBlocks(Blockly: any) {
       compiler.addInclude("#include <MPU9250_WE.h>");
       compiler.addGlobal(`MPU9250_WE myMPU9250(0x68);`);
       compiler.addSetup(`Wire.begin();`);
-      compiler.addSetup(`myMPU9250.init();`);
+      compiler.addSetup(`if (!myMPU9250.init()) { Serial.println("MPU9250 init failed"); }`);
+      compiler.addGlobal(`
+xyzFloat getMpu9250Mag() {
+  return myMPU9250.getMagValues();
+}`);
       return "";
     };
   }
@@ -173,7 +186,7 @@ export function defineNavigationBlocks(Blockly: any) {
   };
   if (generator) {
     generator.forBlock["mpu9250_get_mag_x"] = function () {
-      return ["myMPU9250.getMagValues().x", 0];
+      return ["getMpu9250Mag().x", 0];
     };
   }
 

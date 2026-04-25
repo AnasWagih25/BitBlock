@@ -483,3 +483,9 @@ body {
   color: var(--color-soft-lilac);
   border: 1px solid rgba(157, 39, 222, 0.2);
 }
+
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.5; }
+  100% { opacity: 1; }
+}

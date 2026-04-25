@@ -1,7 +1,14 @@
 import { compiler } from "../compiler/assembler";
+import { getBoardConfig } from "../boards/registry";
 
 export function defineAdvancedCommunicationBlocks(Blockly: any) {
   const generator = Blockly.javascriptGenerator || Blockly.JavaScript;
+  const asCppString = (expr: string) => {
+    if (expr.startsWith("'") && expr.endsWith("'")) {
+      return compiler.wrapString(expr.slice(1, -1));
+    }
+    return expr;
+  };
 
   // ─── LoRa (SX1278) ────────────────────────────────────────────────────────
   Blockly.Blocks["lora_init"] = {
@@ -27,10 +34,11 @@ export function defineAdvancedCommunicationBlocks(Blockly: any) {
     generator.forBlock["lora_init"] = function (block: any) {
       const cs = block.getFieldValue("CS");
       const rst = block.getFieldValue("RST");
-      const int = block.getFieldValue("INT");
+      const irq = block.getFieldValue("INT");
       const freq = block.getFieldValue("FREQ");
-      compiler.addInclude("#include <LoRa.h>");
-      compiler.addSetup(`LoRa.setPins(${cs}, ${rst}, ${int});`);
+      compiler.addInclude("#include <SPI.h>\n#include <LoRa.h>");
+      compiler.addSetup(`SPI.begin();`);
+      compiler.addSetup(`LoRa.setPins(${cs}, ${rst}, ${irq});`);
       compiler.addSetup(`if (!LoRa.begin(${freq})) { Serial.println("LoRa init failed!"); }`);
       return "";
     };
@@ -46,7 +54,8 @@ export function defineAdvancedCommunicationBlocks(Blockly: any) {
   };
   if (generator) {
     generator.forBlock["lora_send"] = function (block: any) {
-      const payload = generator.valueToCode(block, "PAYLOAD", 0) || '""';
+      let payload = generator.valueToCode(block, "PAYLOAD", 0) || '""';
+      payload = asCppString(payload);
       return `LoRa.beginPacket();\nLoRa.print(${payload});\nLoRa.endPacket();\n`;
     };
   }
@@ -110,7 +119,7 @@ export function defineAdvancedCommunicationBlocks(Blockly: any) {
     generator.forBlock["can_init"] = function (block: any) {
       const cs = block.getFieldValue("CS");
       const speed = block.getFieldValue("SPEED");
-      compiler.addInclude("#include <mcp2515.h>");
+      compiler.addInclude("#include <SPI.h>\n#include <mcp2515.h>");
       compiler.addGlobal(`MCP2515 mcp2515(${cs});`);
       compiler.addSetup(`mcp2515.reset();`);
       compiler.addSetup(`mcp2515.setBitrate(${speed}, MCP_8MHZ);`);
@@ -139,7 +148,7 @@ export function defineAdvancedCommunicationBlocks(Blockly: any) {
       const dlc = block.getFieldValue("DLC");
       const b0 = generator.valueToCode(block, "DATA0", 0) || "0";
       const b1 = generator.valueToCode(block, "DATA1", 0) || "0";
-      return `struct can_frame canMsg;\ncanMsg.can_id = ${id};\ncanMsg.can_dlc = ${dlc};\ncanMsg.data[0] = ${b0};\ncanMsg.data[1] = ${b1};\nmcp2515.sendMessage(&canMsg);\n`;
+      return `struct can_frame canMsg;\ncanMsg.can_id = ${id};\ncanMsg.can_dlc = ${dlc};\nfor (byte i = 0; i < 8; i++) canMsg.data[i] = 0;\ncanMsg.data[0] = ${b0};\ncanMsg.data[1] = ${b1};\nmcp2515.sendMessage(&canMsg);\n`;
     };
   }
 
@@ -157,8 +166,16 @@ export function defineAdvancedCommunicationBlocks(Blockly: any) {
     generator.forBlock["gsm_init"] = function (block: any) {
       const rx = block.getFieldValue("RX");
       const tx = block.getFieldValue("TX");
-      compiler.addGlobal(`#include <SoftwareSerial.h>\nSoftwareSerial gsmSerial(${rx}, ${tx});`);
-      compiler.addSetup(`gsmSerial.begin(9600);`);
+      // @ts-ignore
+      const bd = getBoardConfig(compiler.boardId);
+      if (bd.platform === "esp32") {
+        compiler.addGlobal(`HardwareSerial gsmSerial(1);`);
+        compiler.addSetup(`gsmSerial.begin(9600, SERIAL_8N1, ${rx}, ${tx});`);
+      } else {
+        compiler.addInclude(`#include <SoftwareSerial.h>`);
+        compiler.addGlobal(`SoftwareSerial gsmSerial(${rx}, ${tx});`);
+        compiler.addSetup(`gsmSerial.begin(9600);`);
+      }
       return `gsmSerial.println("AT");\ndelay(500);\n`;
     };
   }
@@ -175,8 +192,10 @@ export function defineAdvancedCommunicationBlocks(Blockly: any) {
   };
   if (generator) {
     generator.forBlock["gsm_send_sms"] = function (block: any) {
-      const num = generator.valueToCode(block, "NUMBER", 0) || '""';
-      const msg = generator.valueToCode(block, "TEXT", 0) || '""';
+      let num = generator.valueToCode(block, "NUMBER", 0) || '""';
+      let msg = generator.valueToCode(block, "TEXT", 0) || '""';
+      num = asCppString(num);
+      msg = asCppString(msg);
       return `gsmSerial.println("AT+CMGF=1");\ndelay(200);\ngsmSerial.print("AT+CMGS=\\"");\ngsmSerial.print(${num});\ngsmSerial.println("\\"");\ndelay(200);\ngsmSerial.print(${msg});\ngsmSerial.write(26);\ndelay(500);\n`;
     };
   }
@@ -191,7 +210,8 @@ export function defineAdvancedCommunicationBlocks(Blockly: any) {
   };
   if (generator) {
     generator.forBlock["gsm_make_call"] = function (block: any) {
-      const num = generator.valueToCode(block, "NUMBER", 0) || '""';
+      let num = generator.valueToCode(block, "NUMBER", 0) || '""';
+      num = asCppString(num);
       return `gsmSerial.print("ATD");\ngsmSerial.print(${num});\ngsmSerial.println(";");\n`;
     };
   }
@@ -226,8 +246,16 @@ export function defineAdvancedCommunicationBlocks(Blockly: any) {
       const rx = block.getFieldValue("RX");
       const tx = block.getFieldValue("TX");
       const de = block.getFieldValue("DE");
-      compiler.addGlobal(`#include <SoftwareSerial.h>\nSoftwareSerial rs485(${rx}, ${tx});\nconst int RS485_DE = ${de};`);
-      compiler.addSetup(`pinMode(RS485_DE, OUTPUT);\ndigitalWrite(RS485_DE, LOW);\nrs485.begin(9600);`);
+      // @ts-ignore
+      const bd = getBoardConfig(compiler.boardId);
+      if (bd.platform === "esp32") {
+        compiler.addGlobal(`HardwareSerial rs485(2);\nconst int RS485_DE = ${de};`);
+        compiler.addSetup(`pinMode(RS485_DE, OUTPUT);\ndigitalWrite(RS485_DE, LOW);\nrs485.begin(9600, SERIAL_8N1, ${rx}, ${tx});`);
+      } else {
+        compiler.addInclude(`#include <SoftwareSerial.h>`);
+        compiler.addGlobal(`SoftwareSerial rs485(${rx}, ${tx});\nconst int RS485_DE = ${de};`);
+        compiler.addSetup(`pinMode(RS485_DE, OUTPUT);\ndigitalWrite(RS485_DE, LOW);\nrs485.begin(9600);`);
+      }
       return "";
     };
   }
@@ -242,7 +270,8 @@ export function defineAdvancedCommunicationBlocks(Blockly: any) {
   };
   if (generator) {
     generator.forBlock["rs485_send"] = function (block: any) {
-      const data = generator.valueToCode(block, "DATA", 0) || '""';
+      let data = generator.valueToCode(block, "DATA", 0) || '""';
+      data = asCppString(data);
       return `digitalWrite(RS485_DE, HIGH);\ndelay(10);\nrs485.print(${data});\nrs485.flush();\ndigitalWrite(RS485_DE, LOW);\n`;
     };
   }

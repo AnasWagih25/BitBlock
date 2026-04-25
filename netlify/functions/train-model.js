@@ -1,22 +1,27 @@
-/**
- * Netlify Function: train-model
- * 
- * Receives a training job request, proxies it to the ML Training Cloud Run service.
- * The Cloud Run service handles:
- *   1. Fetching training samples from Firestore (projects/{pid}/ml_samples)
- *   2. Downloading images from Firebase Storage
- *   3. Running TensorFlow training with the specified architecture
- *   4. Updating Firestore job document with epoch/loss/acc in real-time
- *   5. Quantizing to TFLite and uploading the model
- *   6. Setting job status to 'completed' with model download URL
- * 
- * This function acts as a secure proxy — the actual training runs on Cloud Run
- * with Firebase Admin SDK credentials (not exposed to the client).
- * 
- * Environment variables required:
- *   - ML_TRAINING_SERVICE_URL: URL of the Cloud Run training container
- *   - ML_TRAINING_API_KEY: Shared secret for authenticating with the training service
- */
+const admin = require("firebase-admin");
+
+const PLAN_LIMITS = {
+  free: { trainingJobsPerMonth: 2 },
+  maker: { trainingJobsPerMonth: 12 },
+  pro: { trainingJobsPerMonth: 30 },
+  team: { trainingJobsPerMonth: 40 },
+};
+
+function monthStr() {
+  return new Date().toISOString().slice(0, 7);
+}
+
+function initAdmin() {
+  if (!admin.apps.length) admin.initializeApp();
+  return admin.firestore();
+}
+
+async function verifyAuthToken(event) {
+  const header = event.headers?.authorization || event.headers?.Authorization || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+  if (!token) throw new Error("Missing bearer token");
+  return admin.auth().verifyIdToken(token);
+}
 
 exports.handler = async (event) => {
   if (event.httpMethod !== "POST") {
@@ -40,8 +45,11 @@ exports.handler = async (event) => {
   }
 
   try {
+    initAdmin();
+    const db = admin.firestore();
+    const decoded = await verifyAuthToken(event);
     const body = JSON.parse(event.body || "{}");
-    const { projectId, jobId, architecture, task, hyperparameters } = body;
+    const { projectId, jobId, architecture, task, hyperparameters, datasetIds, sampleIds } = body;
 
     if (!projectId || !jobId || !architecture) {
       return {
@@ -51,6 +59,43 @@ exports.handler = async (event) => {
         }),
       };
     }
+
+    const projectRef = db.doc(`projects/${projectId}`);
+    const projectSnap = await projectRef.get();
+    if (!projectSnap.exists || projectSnap.data()?.ownerId !== decoded.uid) {
+      return { statusCode: 403, body: JSON.stringify({ error: "Not allowed to train this project" }) };
+    }
+
+    const userRef = db.doc(`users/${decoded.uid}`);
+    const usageRef = db.doc(`users/${decoded.uid}/usage/current`);
+    const [userSnap, usageSnap] = await Promise.all([userRef.get(), usageRef.get()]);
+    const userPlan = String(userSnap.data()?.plan || "free").toLowerCase();
+    const limitCfg = PLAN_LIMITS[userPlan] || PLAN_LIMITS.free;
+    const nowMonth = monthStr();
+    const usage = usageSnap.exists ? usageSnap.data() : {};
+    const trainingJobsThisMonth =
+      usage?.lastTrainingMonth === nowMonth ? Number(usage?.trainingJobsThisMonth || 0) : 0;
+
+    if (trainingJobsThisMonth >= limitCfg.trainingJobsPerMonth) {
+      return {
+        statusCode: 429,
+        body: JSON.stringify({
+          error: `Monthly training limit reached (${limitCfg.trainingJobsPerMonth}/month on ${userPlan} plan).`,
+        }),
+      };
+    }
+
+    await usageRef.set(
+      {
+        compilesToday: usage?.compilesToday || 0,
+        compilesThisMonth: usage?.compilesThisMonth || 0,
+        lastCompileDate: usage?.lastCompileDate || "",
+        lastCompileMonth: usage?.lastCompileMonth || "",
+        trainingJobsThisMonth: trainingJobsThisMonth + 1,
+        lastTrainingMonth: nowMonth,
+      },
+      { merge: true }
+    );
 
     // Forward the training request to Cloud Run
     const upstream = await fetch(`${trainingServiceUrl.replace(/\/+$/, "")}/train`, {
@@ -65,6 +110,8 @@ exports.handler = async (event) => {
         architecture,
         task: task || "classification",
         hyperparameters: hyperparameters || {},
+        datasetIds: Array.isArray(datasetIds) ? datasetIds : [],
+        sampleIds: Array.isArray(sampleIds) ? sampleIds : [],
       }),
     });
 

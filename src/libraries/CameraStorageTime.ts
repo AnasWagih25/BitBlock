@@ -3,6 +3,12 @@ import { getBoardConfig } from "../boards/registry";
 
 export function defineCameraStorageTimeBlocks(Blockly: any) {
   const generator = Blockly.JavaScript || Blockly.javascriptGenerator;
+  const asCppString = (expr: string) => {
+    if (expr.startsWith("'") && expr.endsWith("'")) {
+      return compiler.wrapString(expr.slice(1, -1));
+    }
+    return expr;
+  };
 
   // -- TIMING & YIELDING (4) --
   Blockly.Blocks["time_delay_ms"] = {
@@ -89,11 +95,12 @@ export function defineCameraStorageTimeBlocks(Blockly: any) {
     generator.forBlock["sd_init"] = function(block: any, generator: any) {
       const cs = generator.valueToCode(block, 'CS', generator.ORDER_ATOMIC) || '4';
       compiler.addInclude(`#include <SD.h>\n#include <SPI.h>`);
-      compiler.addSetup(`if (!SD.begin(${cs})) { Serial.println(F("SD boot failed")); }`);
+      compiler.addSetup(`if (!SD.begin(${cs})) { Serial.println("SD boot failed"); }`);
       return "";
     };
     generator.forBlock["sd_read_file"] = function(block: any, generator: any) {
-      const p = generator.valueToCode(block, 'PATH', generator.ORDER_ATOMIC) || '""';
+      let p = generator.valueToCode(block, 'PATH', generator.ORDER_ATOMIC) || '""';
+      p = asCppString(p);
       compiler.addGlobal(`
 String sdReadFileBlock(String path) {
   File f = SD.open(path);
@@ -105,33 +112,53 @@ String sdReadFileBlock(String path) {
       return [`sdReadFileBlock(${p})`, generator.ORDER_FUNCTION_CALL];
     };
     generator.forBlock["sd_write_file"] = function(block: any, generator: any) {
-      const p = generator.valueToCode(block, 'PATH', generator.ORDER_ATOMIC) || '""';
-      const c = generator.valueToCode(block, 'CONTENT', generator.ORDER_ATOMIC) || '""';
-      compiler.addGlobal(`void sdWriteBlock(String path, String c) { File f = SD.open(path, FILE_WRITE); if(f) { f.print(c); f.close(); } }`);
+      let p = generator.valueToCode(block, 'PATH', generator.ORDER_ATOMIC) || '""';
+      let c = generator.valueToCode(block, 'CONTENT', generator.ORDER_ATOMIC) || '""';
+      p = asCppString(p);
+      c = asCppString(c);
+      compiler.addGlobal(`
+void sdWriteBlock(String path, String c) {
+  SD.remove(path); // enforce overwrite semantics
+  File f = SD.open(path, FILE_WRITE);
+  if (f) { f.print(c); f.close(); }
+}`);
       return `sdWriteBlock(${p}, ${c});\n`;
     };
     generator.forBlock["sd_append_file"] = function(block: any, generator: any) {
-      const p = generator.valueToCode(block, 'PATH', generator.ORDER_ATOMIC) || '""';
-      const c = generator.valueToCode(block, 'CONTENT', generator.ORDER_ATOMIC) || '""';
-      // FILE_APPEND on ESP, on older Arduinos it might be FILE_WRITE which intrinsically appends
-      compiler.addGlobal(`void sdAppendBlock(String path, String c) { File f = SD.open(path, FILE_APPEND); if(f) { f.print(c); f.close(); } }`);
+      let p = generator.valueToCode(block, 'PATH', generator.ORDER_ATOMIC) || '""';
+      let c = generator.valueToCode(block, 'CONTENT', generator.ORDER_ATOMIC) || '""';
+      p = asCppString(p);
+      c = asCppString(c);
+      compiler.addGlobal(`
+void sdAppendBlock(String path, String c) {
+  File f = SD.open(path, FILE_WRITE);
+  if (f) {
+    f.seek(f.size()); // append in a portable way
+    f.print(c);
+    f.close();
+  }
+}`);
       return `sdAppendBlock(${p}, ${c});\n`;
     };
     generator.forBlock["sd_delete_file"] = function(block: any, generator: any) {
-      const p = generator.valueToCode(block, 'PATH', generator.ORDER_ATOMIC) || '""';
+      let p = generator.valueToCode(block, 'PATH', generator.ORDER_ATOMIC) || '""';
+      p = asCppString(p);
       return `SD.remove(${p});\n`;
     };
     generator.forBlock["sd_exists"] = function(block: any, generator: any) {
-      const p = generator.valueToCode(block, 'PATH', generator.ORDER_ATOMIC) || '""';
+      let p = generator.valueToCode(block, 'PATH', generator.ORDER_ATOMIC) || '""';
+      p = asCppString(p);
       return [`SD.exists(${p})`, generator.ORDER_FUNCTION_CALL];
     };
     generator.forBlock["sd_mkdir"] = function(block: any, generator: any) {
-      const p = generator.valueToCode(block, 'PATH', generator.ORDER_ATOMIC) || '""';
+      let p = generator.valueToCode(block, 'PATH', generator.ORDER_ATOMIC) || '""';
+      p = asCppString(p);
       return `SD.mkdir(${p});\n`;
     };
     generator.forBlock["sd_rmdir"] = function(block: any, generator: any) {
-      const p = generator.valueToCode(block, 'PATH', generator.ORDER_ATOMIC) || '""';
-      return `SD.rmdir(${p});\n`;
+      let p = generator.valueToCode(block, 'PATH', generator.ORDER_ATOMIC) || '""';
+      p = asCppString(p);
+      return `SD.remove(${p});\n`;
     };
 
     // EEPROM
@@ -148,7 +175,7 @@ String sdReadFileBlock(String path) {
     generator.forBlock["eeprom_write_byte"] = function(block: any, generator: any) {
       const addr = generator.valueToCode(block, 'ADDR', generator.ORDER_ATOMIC) || '0';
       const val = generator.valueToCode(block, 'VAL', generator.ORDER_ATOMIC) || '0';
-      return `EEPROM.write(${addr}, ${val});\n`;
+      return `EEPROM.write(${addr}, (uint8_t)(${val}));\n`;
     };
     generator.forBlock["eeprom_read_byte"] = function(block: any, generator: any) {
       const addr = generator.valueToCode(block, 'ADDR', generator.ORDER_ATOMIC) || '0';
@@ -167,7 +194,7 @@ String sdReadFileBlock(String path) {
     generator.forBlock["rtc_init"] = function() {
       compiler.addInclude(`#include <Wire.h>\n#include <RTClib.h>`);
       compiler.addGlobal(`RTC_DS3231 rtc;`);
-      compiler.addSetup(`if (!rtc.begin()) { Serial.println(F("RTC miss")); }`);
+      compiler.addSetup(`if (!rtc.begin()) { Serial.println("RTC miss"); }`);
       return "";
     };
     generator.forBlock["rtc_get_hour"] = function() { return [`rtc.now().hour()`, generator.ORDER_FUNCTION_CALL]; };

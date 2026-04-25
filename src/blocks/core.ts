@@ -1,9 +1,11 @@
 import { compiler } from "../compiler/assembler";
+import { getBoardConfig } from "../boards/registry";
 
 export function defineCoreBlocks(Blockly: any) {
   // We attach custom generator handling to the javascript generator for now
   // since a pure C++ generator isn't included in the default blockly package
   const generator = Blockly.JavaScript || Blockly.javascriptGenerator;
+  const idSafe = (v: string) => String(v).replace(/[^a-zA-Z0-9_]/g, "_");
 
   // ─── Execution Flow (Hats) ────────────────────────────────────────────────
   Blockly.Blocks["event_setup"] = {
@@ -50,8 +52,8 @@ export function defineCoreBlocks(Blockly: any) {
     const pin = generator.valueToCode(block, "PIN", generator.ORDER_ATOMIC) || "0";
     const mode = block.getFieldValue("MODE");
     const branch = generator.statementToCode(block, "DO");
-    const isrName = `isr_${pin}_${Math.random().toString(36).substring(7)}`;
-    compiler.addInclude(`void IRAM_ATTR ${isrName}() {\n${branch}\n}`);
+    const isrName = `isr_${idSafe(pin)}_${Math.random().toString(36).substring(7)}`;
+    compiler.addGlobal(`void ${isrName}() {\n${branch}\n}`);
     compiler.addSetup(`pinMode(${pin}, INPUT_PULLUP);`);
     compiler.addSetup(`attachInterrupt(digitalPinToInterrupt(${pin}), ${isrName}, ${mode});`);
     return "";
@@ -68,7 +70,15 @@ export function defineCoreBlocks(Blockly: any) {
   };
   generator.forBlock["esp_deep_sleep"] = function (block: any, generator: any) {
     const time = generator.valueToCode(block, "TIME", generator.ORDER_ATOMIC) || "1000000";
-    return `ESP.deepSleep(${time});\n`;
+    // @ts-ignore
+    const bd = getBoardConfig(compiler.boardId);
+    if (bd.platform === "esp32") {
+      return `esp_sleep_enable_timer_wakeup(${time});\nesp_deep_sleep_start();\n`;
+    }
+    if (bd.platform === "esp8266") {
+      return `ESP.deepSleep(${time});\n`;
+    }
+    return `// Deep sleep is not available on this board.\n`;
   };
 
   // ─── Data Types & Arrays ──────────────────────────────────────────────────
@@ -88,8 +98,9 @@ export function defineCoreBlocks(Blockly: any) {
   };
   generator.forBlock["array_create"] = function (block: any) {
     const type = block.getFieldValue("TYPE");
-    const name = block.getFieldValue("NAME");
-    const size = block.getFieldValue("SIZE");
+    const name = idSafe(block.getFieldValue("NAME") || "myArray");
+    const rawSize = Number(block.getFieldValue("SIZE"));
+    const size = Number.isFinite(rawSize) && rawSize > 0 ? Math.floor(rawSize) : 10;
     compiler.addGlobal(`${type} ${name}[${size}];`);
     return "";
   };
@@ -105,7 +116,7 @@ export function defineCoreBlocks(Blockly: any) {
     },
   };
   generator.forBlock["array_set"] = function (block: any, generator: any) {
-    const name = block.getFieldValue("NAME");
+    const name = idSafe(block.getFieldValue("NAME") || "myArray");
     const index = generator.valueToCode(block, "INDEX", generator.ORDER_ATOMIC) || "0";
     const value = generator.valueToCode(block, "VALUE", generator.ORDER_ATOMIC) || "0";
     return `${name}[${index}] = ${value};\n`;
@@ -120,7 +131,7 @@ export function defineCoreBlocks(Blockly: any) {
     },
   };
   generator.forBlock["array_get"] = function (block: any, generator: any) {
-    const name = block.getFieldValue("NAME");
+    const name = idSafe(block.getFieldValue("NAME") || "myArray");
     const index = generator.valueToCode(block, "INDEX", generator.ORDER_ATOMIC) || "0";
     return [`${name}[${index}]`, generator.ORDER_ATOMIC];
   };

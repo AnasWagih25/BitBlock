@@ -40,18 +40,25 @@ export async function flashESPBlock(port: any, baudRate: number, binaryData: Arr
     await loader.main();
     onProgress("[Flash] Connected to ESP!");
 
-    let fileArray: {data: string | Uint8Array, address: number}[] = [];
+    let fileArray: {data: Uint8Array, address: number}[] = [];
     if (binaryData instanceof ArrayBuffer) {
       // Legacy single-part application
       const binary = new Uint8Array(binaryData);
       fileArray = [{ data: binary, address: 0x10000 }];
     } else {
-      // Multi-part flash with bootloader, partitions, and application
-      fileArray = binaryData.parts.map(p => ({
+      // Multi-part flash with bootloader, partitions, boot_app0, and application.
+      // Order must follow ascending flash addresses (esptool / Espressif docs).
+      fileArray = binaryData.parts.map((p) => ({
         data: p.data,
-        address: p.offset
+        address: p.offset >>> 0,
       }));
-      onProgress(`[Flash] Preparing to write ${fileArray.length} partitions...`);
+      fileArray.sort((a, b) => a.address - b.address);
+      onProgress(`[Flash] Preparing to write ${fileArray.length} partitions…`);
+      onProgress(
+        `[Flash] Regions: ${fileArray
+          .map((f) => `0x${f.address.toString(16)} (${(f.data.byteLength / 1024).toFixed(1)} KB)`)
+          .join(" · ")}`,
+      );
     }
 
     onProgress("[Flash] Erasing & programming flash...");

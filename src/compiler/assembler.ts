@@ -102,7 +102,48 @@ export class ArduinoCompiler {
     });
     
     finalCode += "}\n";
-    return finalCode;
+    return this.formatCode(finalCode);
+  }
+
+  private formatCode(code: string): string {
+    const INDENT = "  ";
+    const lines = code.split("\n");
+    let depth = 0;
+    const formatted: string[] = [];
+
+    for (const rawLine of lines) {
+      const trimmed = rawLine.trim();
+
+      if (!trimmed) {
+        formatted.push("");
+        continue;
+      }
+
+      // Keep preprocessor lines at column 0.
+      if (trimmed.startsWith("#")) {
+        formatted.push(trimmed);
+        continue;
+      }
+
+      // Dedent lines that start with a closing brace.
+      if (trimmed.startsWith("}")) {
+        depth = Math.max(0, depth - 1);
+      }
+
+      formatted.push(`${INDENT.repeat(depth)}${trimmed}`);
+
+      // Increase indent for opening braces, excluding lines that also close in place.
+      const openCount = (trimmed.match(/\{/g) || []).length;
+      const closeCount = (trimmed.match(/\}/g) || []).length;
+      const delta = openCount - closeCount;
+      if (!trimmed.startsWith("}")) {
+        depth = Math.max(0, depth + delta);
+      } else if (delta > 0) {
+        depth += delta;
+      }
+    }
+
+    return formatted.join("\n");
   }
 }
 

@@ -53,7 +53,13 @@ export function defineAdvancedControlBlocks(Blockly: any) {
   if (generator) {
     generator.forBlock["pid_compute"] = function (block: any) {
       const input = generator.valueToCode(block, "INPUT", 0) || "0";
-      return [`pid_input = ${input};\nmyPID.Compute();\npid_output`, 0];
+      compiler.addGlobal(`
+double pidComputeBlock(double inVal) {
+  pid_input = inVal;
+  myPID.Compute();
+  return pid_output;
+}`);
+      return [`pidComputeBlock(${input})`, 0];
     };
   }
 

@@ -3,6 +3,20 @@ import { getBoardConfig } from "../boards/registry";
 
 export function defineCommunicationBlocks(Blockly: any) {
   const generator = Blockly.JavaScript || Blockly.javascriptGenerator;
+  const asCppString = (expr: string) => {
+    if (expr.startsWith("'") && expr.endsWith("'")) {
+      return compiler.wrapString(expr.slice(1, -1));
+    }
+    return expr;
+  };
+  const asMqttCstr = (expr: string) => {
+    const trimmed = expr.trim();
+    // If already a C string literal, avoid heap allocations from String(...)
+    if (/^"([^"\\]|\\.)*"$/.test(trimmed)) {
+      return trimmed;
+    }
+    return `String(${expr}).c_str()`;
+  };
 
   // -- WIFI (5) --
   Blockly.Blocks["wifi_connect"] = {
@@ -87,7 +101,7 @@ export function defineCommunicationBlocks(Blockly: any) {
   Blockly.Blocks["serial_init_baud"] = {
     init() { this.appendValueInput("BAUD").setCheck("Number").appendField("Init Core Serial at baud"); this.setPreviousStatement(true, null); this.setNextStatement(true, null); this.setColour("#718096"); }
   };
-  Blockly.Blocks["serial_print"] = {
+  Blockly.Blocks["comm_serial_print"] = {
     init() { this.appendValueInput("MSG").appendField("Serial Print"); this.setPreviousStatement(true, null); this.setNextStatement(true, null); this.setColour("#718096"); }
   };
   Blockly.Blocks["serial_println"] = {
@@ -114,21 +128,27 @@ export function defineCommunicationBlocks(Blockly: any) {
     generator.forBlock["wifi_connect"] = function(block: any, generator: any) {
       let ssid = generator.valueToCode(block, 'SSID', generator.ORDER_ATOMIC) || '""';
       let pass = generator.valueToCode(block, 'PASS', generator.ORDER_ATOMIC) || '""';
+      ssid = asCppString(ssid);
+      pass = asCppString(pass);
       // @ts-ignore
       const bd = getBoardConfig(compiler.boardId);
+      if (!bd.wifi) {
+        return `Serial.println("WiFi not supported on selected board");\n`;
+      }
       if (bd.platform === "esp8266") compiler.addInclude(`#include <ESP8266WiFi.h>`);
       else if (bd.platform === "esp32") compiler.addInclude(`#include <WiFi.h>`);
       else compiler.addInclude(`#include <WiFiS3.h>`);
       return `WiFi.begin(${ssid}, ${pass});\nwhile (WiFi.status() != WL_CONNECTED) { delay(500); Serial.print("."); }\nSerial.println("\\nWiFi connected");\n`;
     };
     generator.forBlock["wifi_disconnect"] = function() { return `WiFi.disconnect();\n`; };
-    generator.forBlock["wifi_get_ip"] = function() { return [`WiFi.localIP().toString()`, generator.ORDER_FUNCTION_CALL]; };
+    generator.forBlock["wifi_get_ip"] = function() { return [`String(WiFi.localIP())`, generator.ORDER_FUNCTION_CALL]; };
     generator.forBlock["wifi_get_mac"] = function() { return [`WiFi.macAddress()`, generator.ORDER_FUNCTION_CALL]; };
     generator.forBlock["wifi_get_rssi"] = function() { return [`WiFi.RSSI()`, generator.ORDER_FUNCTION_CALL]; };
 
     // HTTP
     generator.forBlock["http_get_request"] = function(block: any, generator: any) {
       let u = generator.valueToCode(block, 'URL', generator.ORDER_ATOMIC) || '""';
+      u = asCppString(u);
       compiler.addInclude(`#include <HTTPClient.h>\n#include <WiFiClient.h>`);
       compiler.addGlobal(`
 String __httpGET(String u) {
@@ -142,6 +162,8 @@ String __httpGET(String u) {
     generator.forBlock["http_post_request"] = function(block: any, generator: any) {
       let u = generator.valueToCode(block, 'URL', generator.ORDER_ATOMIC) || '""';
       let p = generator.valueToCode(block, 'PAYLOAD', generator.ORDER_ATOMIC) || '""';
+      u = asCppString(u);
+      p = asCppString(p);
       compiler.addInclude(`#include <HTTPClient.h>\n#include <WiFiClient.h>`);
       compiler.addGlobal(`
 String __httpPOST(String u, String p) {
@@ -157,34 +179,49 @@ String __httpPOST(String u, String p) {
     // MQTT
     generator.forBlock["mqtt_init"] = function() {
       compiler.addInclude(`#include <PubSubClient.h>`);
-      compiler.addGlobal(`WiFiClient espClient;\nPubSubClient mqttClient(espClient);`);
+      // @ts-ignore
+      const bd = getBoardConfig(compiler.boardId);
+      if (bd.platform === "esp8266") compiler.addInclude(`#include <ESP8266WiFi.h>`);
+      else if (bd.platform === "esp32") compiler.addInclude(`#include <WiFi.h>`);
+      else compiler.addInclude(`#include <WiFiS3.h>`);
+      compiler.addGlobal(`WiFiClient espClient;\nPubSubClient mqttClient(espClient);\nString mqttHost = "";\nString mqttClientId = "bitblock_client";`);
+      compiler.addGlobal(`
+void mqttConnectBlock(String id) {
+  if (mqttHost.length() == 0) return;
+  if (id.length() == 0) id = "bitblock_client";
+  if (mqttClient.connected()) return;
+  mqttClient.connect(id.c_str());
+}`);
+      // Keep MQTT connected, then service keepalive/packets.
+      compiler.addLoop(`mqttConnectBlock(mqttClientId);`);
+      compiler.addLoop(`mqttClient.loop();`);
       return "";
     };
     generator.forBlock["mqtt_set_server"] = function(block: any, generator: any) {
       let s = generator.valueToCode(block, 'SERVER', generator.ORDER_ATOMIC) || '""';
       let p = generator.valueToCode(block, 'PORT', generator.ORDER_ATOMIC) || '1883';
-      return `mqttClient.setServer(String(${s}).c_str(), ${p});\n`;
+      s = asCppString(s);
+      return `mqttHost = String(${s});\nmqttHost.trim();\nmqttClient.setServer(mqttHost.c_str(), ${p});\n`;
     };
     generator.forBlock["mqtt_connect"] = function(block: any, generator: any) {
       let id = generator.valueToCode(block, 'ID', generator.ORDER_ATOMIC) || '""';
-      compiler.addGlobal(`
-void mqttConnectBlock(String id) {
-  if (!mqttClient.connected()) {
-    while (!mqttClient.connected()) {
-      if (!mqttClient.connect(id.c_str())) delay(5000);
-    }
-  }
-}`);
-      return `mqttConnectBlock(${id});\n`;
+      id = asCppString(id);
+      return `mqttClientId = String(${id});\nmqttConnectBlock(mqttClientId);\n`;
     };
     generator.forBlock["mqtt_publish"] = function(block: any, generator: any) {
       let t = generator.valueToCode(block, 'TOPIC', generator.ORDER_ATOMIC) || '""';
       let m = generator.valueToCode(block, 'MSG', generator.ORDER_ATOMIC) || '""';
-      return `mqttClient.publish(String(${t}).c_str(), String(${m}).c_str());\n`;
+      t = asCppString(t);
+      m = asCppString(m);
+      const topicArg = asMqttCstr(t);
+      const msgArg = asMqttCstr(m);
+      return `mqttClient.publish(${topicArg}, ${msgArg});\n`;
     };
     generator.forBlock["mqtt_subscribe"] = function(block: any, generator: any) {
       let t = generator.valueToCode(block, 'TOPIC', generator.ORDER_ATOMIC) || '""';
-      return `mqttClient.subscribe(String(${t}).c_str());\n`;
+      t = asCppString(t);
+      const topicArg = asMqttCstr(t);
+      return `mqttClient.subscribe(${topicArg});\n`;
     };
     generator.forBlock["mqtt_loop"] = function() { return `mqttClient.loop();\n`; };
     generator.forBlock["mqtt_is_connected"] = function() { return [`mqttClient.connected()`, generator.ORDER_FUNCTION_CALL]; };
@@ -192,6 +229,10 @@ void mqttConnectBlock(String id) {
     // Bluetooth
     generator.forBlock["bt_classic_init"] = function(block: any, generator: any) {
       let n = generator.valueToCode(block, 'NAME', generator.ORDER_ATOMIC) || '"ESP32_BT"';
+      n = asCppString(n);
+      // @ts-ignore
+      const bd = getBoardConfig(compiler.boardId);
+      if (bd.platform !== "esp32") return `Serial.println("Bluetooth Classic supported only on ESP32");\n`;
       compiler.addInclude(`#include "BluetoothSerial.h"`);
       compiler.addGlobal(`BluetoothSerial SerialBT;`);
       compiler.addSetup(`SerialBT.begin(${n});`);
@@ -199,6 +240,7 @@ void mqttConnectBlock(String id) {
     };
     generator.forBlock["bt_classic_print"] = function(block: any, generator: any) {
       let m = generator.valueToCode(block, 'MSG', generator.ORDER_ATOMIC) || '""';
+      m = asCppString(m);
       return `SerialBT.println(${m});\n`;
     };
     generator.forBlock["bt_classic_read"] = function() {
@@ -210,12 +252,17 @@ void mqttConnectBlock(String id) {
     // BLE
     generator.forBlock["ble_init"] = function(block: any, generator: any) {
       let n = generator.valueToCode(block, 'NAME', generator.ORDER_ATOMIC) || '"ESP32_BLE"';
+      n = asCppString(n);
+      // @ts-ignore
+      const bd = getBoardConfig(compiler.boardId);
+      if (bd.platform !== "esp32") return `Serial.println("BLE supported only on ESP32");\n`;
       compiler.addInclude(`#include <BLEDevice.h>\n#include <BLEServer.h>\n#include <BLEUtils.h>`);
-      compiler.addSetup(`BLEDevice::init(String(${n}).c_str());\nBLEServer *pServer = BLEDevice::createServer();`);
+      compiler.addGlobal(`BLEServer* pServer = nullptr;\nBLEAdvertising* pAdvertising = nullptr;`);
+      compiler.addSetup(`BLEDevice::init(String(${n}).c_str());\npServer = BLEDevice::createServer();\npAdvertising = BLEDevice::getAdvertising();`);
       return "";
     };
     generator.forBlock["ble_start_advertising"] = function() {
-      return `BLEDevice::startAdvertising();\n`;
+      return `if (pAdvertising) pAdvertising->start();\n`;
     };
     // Basic hooks for others as placeholder (pure BLE server architecture is complex)
     generator.forBlock["ble_create_service"] = function() { return `// Create BLE Service\n`; };
@@ -228,12 +275,14 @@ void mqttConnectBlock(String id) {
       compiler.addSetup(`Serial.begin(${b});`);
       return "";
     };
-    generator.forBlock["serial_print"] = function(block: any, generator: any) {
+    generator.forBlock["comm_serial_print"] = function(block: any, generator: any) {
       let m = generator.valueToCode(block, 'MSG', generator.ORDER_ATOMIC) || '""';
+      m = asCppString(m);
       return `Serial.print(${m});\n`;
     };
     generator.forBlock["serial_println"] = function(block: any, generator: any) {
       let m = generator.valueToCode(block, 'MSG', generator.ORDER_ATOMIC) || '""';
+      m = asCppString(m);
       return `Serial.println(${m});\n`;
     };
     generator.forBlock["serial_read_string"] = function() { return [`Serial.readString()`, generator.ORDER_FUNCTION_CALL]; };
@@ -290,7 +339,7 @@ export function getCommunicationCategory() {
       { kind: "block", type: "ble_notify" },
       { kind: "label", text: "Serial & Buses" },
       { kind: "block", type: "serial_init_baud" },
-      { kind: "block", type: "serial_print" },
+      { kind: "block", type: "comm_serial_print" },
       { kind: "block", type: "serial_println" },
       { kind: "block", type: "serial_read_string" },
       { kind: "block", type: "serial_available" },

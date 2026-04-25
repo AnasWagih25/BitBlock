@@ -1,18 +1,21 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { doc, getDoc, updateDoc, serverTimestamp, addDoc, collection, increment, getDocs, query, where, orderBy, limit, onSnapshot } from "firebase/firestore";
-import { db } from "../lib/firebase";
+import { doc, getDoc, updateDoc, serverTimestamp, addDoc, collection, increment, getDocs, query, where, onSnapshot, deleteDoc } from "firebase/firestore";
+import { auth, db } from "../lib/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { useAppDialog } from "../contexts/DialogContext";
+import { useUsage } from "../hooks/useUsage";
 import CassetteMascot from "../components/ui/CassetteMascot";
+import PlanLimitBanner from "../components/PlanLimitBanner";
 import { BOARDS, getBoardConfig } from "../boards/registry";
-import { TASK_ARCHITECTURES } from "../boards/MLCapabilities";
+import { TASK_ARCHITECTURES, ML_ARCHITECTURES } from "../boards/MLCapabilities";
 import { compiler } from "../compiler/assembler";
 import { defineCoreBlocks, getCoreToolboxBlocks } from "../blocks/core";
 import { defineAllLibraryBlocks, getAllLibraryCategories } from "../libraries";
 import DataCollection from "../ml/DataCollection";
 import TrainingView from "../ml/TrainingView";
 import TestingView from "../ml/Testing";
+import ModelRegistry from "../ml/ModelRegistry";
 import { generateMLBlock } from "../ml/Deployment";
 import { flashESPBlock } from "../flash/esptoolProtocol";
 import { flashSTK500 } from "../flash/stk500Protocol";
@@ -24,11 +27,23 @@ let Blockly: any = null;
 
 const PANEL_TABS = ["code", "serial", "info"] as const;
 type PanelTab = typeof PANEL_TABS[number];
+const ML_PIPELINE_TABS = ["collect", "train", "versions", "test"] as const;
+type MLPipelineTab = typeof ML_PIPELINE_TABS[number];
+const MARKETPLACE_CATEGORIES = ["GPIO", "Sensors", "Display", "Communication", "ML / AI", "Actuators", "Networking"];
+
+const normalizeText = (value: string) => value.trim().toLowerCase().replace(/\s+/g, " ");
+
+async function sha256Hex(input: string) {
+  const bytes = new TextEncoder().encode(input);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 
 export default function IDEPage() {
   const { projectId } = useParams();
-  const { user } = useAuth();
+  const { user, userPlan } = useAuth();
   const { alert } = useAppDialog();
+  const { canCompile, compileBlockReason, canStartTraining, trainingBlockReason, incrementCompileCount, incrementTrainingCount } = useUsage(user?.uid, userPlan);
   const navigate = useNavigate();
 
   const [project, setProject] = useState<any>(null);
@@ -39,20 +54,41 @@ export default function IDEPage() {
   const [compiling, setCompiling] = useState(false);
   const [compileStatus, setCompileStatus] = useState<"idle" | "compiling" | "success" | "error">("idle");
   const [compileMessage, setCompileMessage] = useState("");
+  const [compileProgress, setCompileProgress] = useState(0);
+  const [compileStartedAt, setCompileStartedAt] = useState<number | null>(null);
   const [firmwareReady, setFirmwareReady] = useState(false);
-  const [firmwareBinary, setFirmwareBinary] = useState<ArrayBuffer | {parts: {offset: number, data: Uint8Array}[]} | null>(null);
+  const [firmwareBinary, setFirmwareBinary] = useState<ArrayBuffer | { parts: { offset: number, data: Uint8Array }[] } | null>(null);
   const [flashSupported, setFlashSupported] = useState(false);
   const [serialLog, setSerialLog] = useState<string[]>([]);
+  const [serialAutoScroll, setSerialAutoScroll] = useState(true);
   const [blocklyReady, setBlocklyReady] = useState(false);
   const [showCamWizard, setShowCamWizard] = useState(false);
   const [viewMode, setViewMode] = useState<"blocks" | "ml">("blocks");
+  const [mlPipelineTab, setMlPipelineTab] = useState<MLPipelineTab>("collect");
+  /** When set while on the Test tab, inference uses this job id (from Versions). Cleared when leaving Test. */
+  const [inferenceJobOverride, setInferenceJobOverride] = useState<string | null>(null);
   const [connectedPort, setConnectedPort] = useState<any>(null);
   const [mlTask, setMlTask] = useState<string>("gesture");
   const [mlArch, setMlArch] = useState<string>("");
   const [trainedModel, setTrainedModel] = useState<{ blockId: string, arch: string, headerUrl: string, labels: string[] } | null>(null);
-  const [sidebarExpanded, setSidebarExpanded] = useState(true);
+  const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const [activeGuide, setActiveGuide] = useState<{label: string, content: any} | null>(null);
   const [promptDialog, setPromptDialog] = useState<{ message: string, defaultValue: string, callback: (v: string | null) => void } | null>(null);
+  const [showMlOnboarding, setShowMlOnboarding] = useState(false);
+  const [showMarketplaceExport, setShowMarketplaceExport] = useState(false);
+  const [exportingMarketplace, setExportingMarketplace] = useState(false);
+  const [compileArtifactHash, setCompileArtifactHash] = useState("");
+  const [marketplaceToolboxBlocks, setMarketplaceToolboxBlocks] = useState<string[]>([]);
+  const [marketplaceImportItems, setMarketplaceImportItems] = useState<Array<{ id: string; name: string; blocksXml: string }>>([]);
+  const [marketplaceInstalledCount, setMarketplaceInstalledCount] = useState(0);
+  const [importingInstalled, setImportingInstalled] = useState(false);
+  const [exportName, setExportName] = useState("");
+  const [exportFunctionality, setExportFunctionality] = useState("");
+  const [exportDescription, setExportDescription] = useState("");
+  const [exportCategory, setExportCategory] = useState("GPIO");
+  const [compiledSourceHash, setCompiledSourceHash] = useState("");
+  const mlOnboardingShownRef = useRef(false);
+  const showPlanBanner = !canCompile || !canStartTraining;
 
   const QUICK_GUIDES: Record<string, any> = {
     "Control Logic": (
@@ -165,9 +201,18 @@ export default function IDEPage() {
   const workspaceRef = useRef<any>(null);
   const blocklyDivRef = useRef<HTMLDivElement>(null);
   const saveTimeoutRef = useRef<any>(null);
+  const serialScrollRef = useRef<HTMLDivElement>(null);
 
   const currentBoard = getBoardConfig(project?.board || "esp32-wroom");
   const isMlSupported = currentBoard.mlSupport;
+
+  const asMillis = (v: any) => {
+    if (!v) return 0;
+    if (typeof v.toMillis === "function") return v.toMillis();
+    if (v.seconds) return Number(v.seconds) * 1000;
+    const n = new Date(v).getTime();
+    return Number.isFinite(n) ? n : 0;
+  };
 
   useEffect(() => {
     // @ts-ignore
@@ -187,6 +232,28 @@ export default function IDEPage() {
     if (!projectId || !user) return;
     fetchProject();
   }, [projectId, user]);
+
+  useEffect(() => {
+    if (mlPipelineTab !== "test") setInferenceJobOverride(null);
+  }, [mlPipelineTab]);
+
+  // Keep project fields (e.g. mlActiveTrainingJobId) in sync after registry / other updates
+  useEffect(() => {
+    if (!projectId || !user?.uid) return;
+    const unsub = onSnapshot(doc(db, "projects", projectId), (snap) => {
+      if (!snap.exists()) {
+        navigate("/dashboard");
+        return;
+      }
+      const data = snap.data();
+      if (data.ownerId !== user.uid) {
+        navigate("/dashboard");
+        return;
+      }
+      setProject({ id: snap.id, ...data });
+    });
+    return () => unsub();
+  }, [projectId, user?.uid, navigate]);
 
   // Handle automatic Blockly workspace resizing when container flex expands/shrinks
   useEffect(() => {
@@ -217,31 +284,55 @@ export default function IDEPage() {
     }
   };
 
-  // Listen to the latest completed ML training job
+  // Toolbox ML block: prefer explicit active job, else latest completed training run
   useEffect(() => {
     if (!projectId) return;
+    const activeId =
+      typeof project?.mlActiveTrainingJobId === "string" && project.mlActiveTrainingJobId.length > 0
+        ? project.mlActiveTrainingJobId
+        : null;
+
+    const applyJob = (job: Record<string, unknown> | undefined) => {
+      if (job?.headerUrl && job?.arch && job?.labels) {
+        const arch = String(job.arch);
+        setTrainedModel({
+          blockId: `ml_model_${arch.toLowerCase().replace(/ /g, "_")}`,
+          arch,
+          headerUrl: String(job.headerUrl),
+          labels: job.labels as string[],
+        });
+      } else {
+        setTrainedModel(null);
+      }
+    };
+
+    if (activeId) {
+      const unsub = onSnapshot(doc(db, "projects", projectId, "jobs", activeId), (snap) => {
+        if (!snap.exists()) {
+          setTrainedModel(null);
+          return;
+        }
+        const data = snap.data();
+        if (data.status === "completed") applyJob(data);
+        else setTrainedModel(null);
+      });
+      return () => unsub();
+    }
+
     const jobsQ = query(
       collection(db, "projects", projectId, "jobs"),
       where("type", "==", "training"),
       where("status", "==", "completed"),
-      orderBy("startedAt", "desc"),
-      limit(1)
     );
     const unsubscribe = onSnapshot(jobsQ, (snap) => {
-      if (!snap.empty) {
-        const job = snap.docs[0].data();
-        if (job.headerUrl && job.arch && job.labels) {
-          setTrainedModel({
-            blockId: `ml_model_${job.arch.toLowerCase().replace(/ /g, "_")}`,
-            arch: job.arch,
-            headerUrl: job.headerUrl,
-            labels: job.labels
-          });
-        }
-      }
+      const docs = snap.docs
+        .slice()
+        .sort((a, b) => asMillis(b.data().startedAt) - asMillis(a.data().startedAt));
+      if (docs.length > 0) applyJob(docs[0].data());
+      else setTrainedModel(null);
     });
     return () => unsubscribe();
-  }, [projectId]);
+  }, [projectId, project?.mlActiveTrainingJobId]);
 
   const getToolboxConfig = useCallback((currentModel: any, blocklyInstance: any) => {
     const tb = {
@@ -287,7 +378,31 @@ export default function IDEPage() {
         { kind: "sep" },
         ...getAllLibraryCategories(),
       ],
-    };
+    } as any;
+
+    if (marketplaceInstalledCount > 0 || marketplaceToolboxBlocks.length > 0 || marketplaceImportItems.length > 0) {
+      const importButtons = marketplaceImportItems.map((item) => ({
+        kind: "button",
+        text: `Insert: ${item.name}`,
+        callbackKey: `MARKETPLACE_IMPORT_${item.id}`,
+      }));
+      tb.contents.push({ kind: "sep" });
+      tb.contents.push({
+        kind: "category",
+        name: "Marketplace",
+        colour: "#B94FF0",
+        contents: [
+          ...importButtons,
+          ...(importButtons.length > 0 && marketplaceToolboxBlocks.length > 0 ? [{ kind: "sep" }] : []),
+          ...(marketplaceToolboxBlocks.length > 0
+            ? marketplaceToolboxBlocks.map((type) => ({ kind: "block", type }))
+            : []),
+          ...(importButtons.length === 0 && marketplaceToolboxBlocks.length === 0
+            ? [{ kind: "label", text: "No installable marketplace items yet" }]
+            : []),
+        ],
+      });
+    }
 
     if (currentModel && blocklyInstance) {
       const archName = ML_ARCHITECTURES[currentModel.arch]?.name || currentModel.arch;
@@ -300,15 +415,30 @@ export default function IDEPage() {
       } as any);
     }
     return tb;
-  }, []);
+  }, [marketplaceInstalledCount, marketplaceToolboxBlocks, marketplaceImportItems]);
 
   // Update Toolbox dynamically when trainedModel changes
   useEffect(() => {
-    if (workspaceRef.current && Blockly && trainedModel) {
-      const toolbox = getToolboxConfig(trainedModel, Blockly);
-      workspaceRef.current.updateToolbox(toolbox);
+    if (!workspaceRef.current || !Blockly) return;
+    const toolbox = getToolboxConfig(trainedModel, Blockly);
+    workspaceRef.current.updateToolbox(toolbox);
+  }, [trainedModel, marketplaceToolboxBlocks, marketplaceImportItems, getToolboxConfig]);
+
+  useEffect(() => {
+    if (!workspaceRef.current || !Blockly) return;
+    for (const item of marketplaceImportItems) {
+      const callbackKey = `MARKETPLACE_IMPORT_${item.id}`;
+      workspaceRef.current.registerButtonCallback(callbackKey, () => {
+        try {
+          const snippetXml = Blockly.utils.xml.textToDom(item.blocksXml);
+          Blockly.Xml.domToWorkspace(snippetXml, workspaceRef.current);
+          appendLog(`[Marketplace] Inserted "${item.name}" into workspace.`);
+        } catch (e) {
+          console.warn(`Failed to insert marketplace item ${item.id}:`, e);
+        }
+      });
     }
-  }, [trainedModel, getToolboxConfig]);
+  }, [marketplaceImportItems]);
 
   // Initialize Blockly once project is loaded
   useEffect(() => {
@@ -369,34 +499,77 @@ export default function IDEPage() {
         },
       });
 
+      // Register custom renderer to fix the bottom fang overlap issue on housing blocks
+      class CustomConstantsProvider extends Blockly.geras.ConstantProvider {
+        constructor() {
+          super();
+          // Add extra padding at the bottom of statement inputs so inner fangs don't overlap flat housing blocks
+          this.STATEMENT_BOTTOM_SPACER = 12; 
+        }
+      }
+
+      class CustomRenderer extends Blockly.geras.Renderer {
+        makeConstants_() {
+          return new CustomConstantsProvider();
+        }
+      }
+
+      try {
+        Blockly.blockRendering.register("bitblock_renderer", CustomRenderer);
+      } catch (rendererErr: any) {
+        // During hot reload or repeated init, Blockly may already have this renderer.
+        // In that case we reuse the existing registration.
+        const msg = String(rendererErr?.message || "");
+        if (!msg.includes('already registered')) {
+          throw rendererErr;
+        }
+      }
+
       // Define default and custom blocks
       defineCoreBlocks(Blockly);
       defineAllLibraryBlocks(Blockly);
 
-      // Load installed marketplace blocks for this user
+      // Load installed marketplace blocks/snippets for this user
+      const loadedMarketplaceTypes: string[] = [];
+      const pendingMarketplaceImports: { id: string; name: string; blocksXml: string }[] = [];
       if (user) {
         try {
           const installedSnap = await getDocs(collection(db, "users", user.uid, "installedBlocks"));
           const installedIds = installedSnap.docs.map(d => d.id);
+          setMarketplaceInstalledCount(installedIds.length);
           
           for (const blockId of installedIds) {
             try {
               const mpSnap = await getDoc(doc(db, "marketplace", blockId));
               if (!mpSnap.exists()) continue;
               const mpData = mpSnap.data();
+              const storedBlocksXml = typeof mpData.blocksXml === "string"
+                ? mpData.blocksXml
+                : (typeof mpData.projectBlocksXml === "string" ? mpData.projectBlocksXml : "");
+              if (storedBlocksXml) {
+                pendingMarketplaceImports.push({
+                  id: blockId,
+                  name: String(mpData.name || "Marketplace item"),
+                  blocksXml: storedBlocksXml,
+                });
+              }
               
               // Register the block definition if it has blockJSON
-              if (mpData.blockJSON) {
-                const blockDef = typeof mpData.blockJSON === 'string' ? JSON.parse(mpData.blockJSON) : mpData.blockJSON;
+              const rawBlockJson = mpData.blockJSON ?? mpData.blockJson;
+              if (rawBlockJson) {
+                const blockDef = typeof rawBlockJson === 'string' ? JSON.parse(rawBlockJson) : rawBlockJson;
+                if (!blockDef?.type) continue;
                 Blockly.Blocks[blockDef.type] = {
                   init() { this.jsonInit(blockDef); }
                 };
+                loadedMarketplaceTypes.push(blockDef.type);
                 
                 // Register the code generator if provided
-                if (mpData.generatorCode) {
+                const generatorCode = mpData.generatorCode ?? mpData.generator;
+                if (generatorCode) {
                   const gen = Blockly.javascriptGenerator || Blockly.JavaScript;
                   try {
-                    const genFn = new Function('block', 'generator', mpData.generatorCode);
+                    const genFn = new Function('block', 'generator', generatorCode);
                     gen.forBlock[blockDef.type] = function(block: any) {
                       return genFn(block, gen);
                     };
@@ -415,10 +588,12 @@ export default function IDEPage() {
           console.warn("Could not load installed marketplace blocks:", err);
         }
       }
+      setMarketplaceToolboxBlocks(Array.from(new Set(loadedMarketplaceTypes)));
 
       workspaceRef.current = Blockly.inject(blocklyDivRef.current, {
         toolbox: getToolboxConfig(trainedModel, Blockly),
         theme,
+        renderer: 'bitblock_renderer',
         trashcan: true,
         zoom: { controls: true, wheel: true, startScale: 0.9, maxScale: 2, minScale: 0.4, scaleSpeed: 1.1 },
         grid: { spacing: 24, length: 4, colour: "rgba(157,39,222,0.1)", snap: true },
@@ -435,6 +610,8 @@ export default function IDEPage() {
           console.warn("Could not restore blocks:", e);
         }
       }
+
+      setMarketplaceImportItems(pendingMarketplaceImports);
 
       // Listen for changes
       workspaceRef.current.addChangeListener((event: any) => {
@@ -481,9 +658,104 @@ export default function IDEPage() {
     }
   }, [project?.board]);
 
+  useEffect(() => {
+    if (!compiling || !compileStartedAt) return;
+    const tick = () => {
+      const elapsed = Date.now() - compileStartedAt;
+      const estimated = Math.min(92, 10 + (elapsed / 120000) * 82);
+      setCompileProgress((prev) => Math.max(prev, estimated));
+    };
+    tick();
+    const timer = setInterval(tick, 1500);
+    return () => clearInterval(timer);
+  }, [compiling, compileStartedAt]);
+
   const scheduleAutoSave = () => {
     clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(() => saveProject(), 3000);
+  };
+
+  const importInstalledMarketplaceItems = async () => {
+    if (!user || !projectId || !workspaceRef.current || !Blockly) return;
+    setImportingInstalled(true);
+    try {
+      const installedSnap = await getDocs(collection(db, "users", user.uid, "installedBlocks"));
+      const installedIds = installedSnap.docs.map((d) => d.id);
+      setMarketplaceInstalledCount(installedIds.length);
+
+      const refreshedImportItems: Array<{ id: string; name: string; blocksXml: string }> = [];
+      const missingPayloadNames: string[] = [];
+      const staleInstalledIds: string[] = [];
+      const refreshedBlockTypes: string[] = [];
+
+      for (const d of installedSnap.docs) {
+        const blockId = d.id;
+        try {
+          const installedData = d.data() as any;
+          let itemName = String(installedData?.name || "Marketplace item");
+          let storedBlocksXml = typeof installedData?.blocksXml === "string"
+            ? installedData.blocksXml
+            : (typeof installedData?.projectBlocksXml === "string" ? installedData.projectBlocksXml : "");
+          if (!storedBlocksXml) {
+            const mpSnap = await getDoc(doc(db, "marketplace", blockId));
+            if (mpSnap.exists()) {
+              const mpData = mpSnap.data() as any;
+              itemName = String(mpData?.name || itemName);
+              storedBlocksXml = typeof mpData?.blocksXml === "string"
+                ? mpData.blocksXml
+                : (typeof mpData?.projectBlocksXml === "string" ? mpData.projectBlocksXml : "");
+            }
+          }
+          if (!storedBlocksXml) {
+            missingPayloadNames.push(itemName);
+            staleInstalledIds.push(blockId);
+            continue;
+          }
+          refreshedImportItems.push({ id: blockId, name: itemName, blocksXml: storedBlocksXml });
+          const rawBlockJson = installedData?.blockJSON || installedData?.blockJson;
+          if (rawBlockJson) {
+            try {
+              const blockDef = typeof rawBlockJson === "string" ? JSON.parse(rawBlockJson) : rawBlockJson;
+              if (blockDef?.type) refreshedBlockTypes.push(String(blockDef.type));
+            } catch {
+              // ignore invalid stored block json
+            }
+          }
+        } catch (importErr) {
+          console.warn(`Failed to import installed marketplace item ${blockId}:`, importErr);
+          const name = String((d.data() as any)?.name || blockId);
+          missingPayloadNames.push(name);
+        }
+      }
+
+      if (staleInstalledIds.length > 0) {
+        await Promise.all(
+          staleInstalledIds.map((id) =>
+            deleteDoc(doc(db, "users", user.uid, "installedBlocks", id)).catch(() => {}),
+          ),
+        );
+      }
+      setMarketplaceImportItems(refreshedImportItems);
+      if (refreshedBlockTypes.length > 0) {
+        setMarketplaceToolboxBlocks((prev) => Array.from(new Set([...prev, ...refreshedBlockTypes])));
+      }
+      if (refreshedImportItems.length > 0) {
+        const extraMissing = missingPayloadNames.length > 0
+          ? ` Removed ${missingPayloadNames.length} stale item${missingPayloadNames.length === 1 ? "" : "s"} missing payload (${missingPayloadNames.slice(0, 2).join(", ")}${missingPayloadNames.length > 2 ? "..." : ""}).`
+          : "";
+        await alert(
+          `Marketplace toolbar updated with ${refreshedImportItems.length} installable item${refreshedImportItems.length === 1 ? "" : "s"}. Open the "Marketplace" toolbox category and click item name to insert blocks.` +
+          extraMissing,
+        );
+      } else {
+        const suffix = missingPayloadNames.length > 0
+          ? ` Removed stale installed item${missingPayloadNames.length === 1 ? "" : "s"} missing payload: ${missingPayloadNames.slice(0, 3).join(", ")}${missingPayloadNames.length > 3 ? "..." : ""}.`
+          : "";
+        await alert("No installable marketplace items found." + suffix + " Install a listing that includes workspace snapshot payload.");
+      }
+    } finally {
+      setImportingInstalled(false);
+    }
   };
 
   const saveProject = async () => {
@@ -507,11 +779,45 @@ export default function IDEPage() {
 
   const handleCompile = async () => {
     if (!user || !projectId) return;
+    let codeToCompile = generatedCode;
+    try {
+      if (workspaceRef.current && Blockly) {
+        const gen = Blockly.javascriptGenerator || Blockly.JavaScript;
+        if (gen) {
+          const boardId = project?.board || "esp32-wroom";
+          compiler.init(boardId);
+          const rawCode = gen.workspaceToCode(workspaceRef.current);
+          const wrapped = compiler.assemble(rawCode);
+          if (wrapped && wrapped.trim()) {
+            codeToCompile = wrapped;
+            setGeneratedCode(wrapped);
+          }
+        }
+      }
+    } catch (regenErr: any) {
+      await alert(`Code generation failed before compile: ${regenErr?.message || "Unknown generator error"}`);
+      return;
+    }
+    if (!/void\s+setup\s*\(/.test(codeToCompile) || !/void\s+loop\s*\(/.test(codeToCompile)) {
+      await alert("Compile blocked: generated code is incomplete (missing setup/loop). Reinsert or fix invalid marketplace blocks, then try again.");
+      return;
+    }
+
+    // ── Plan limit check ──
+    if (!canCompile) {
+      await alert(compileBlockReason || "Compile limit reached. Upgrade your plan for more compiles.");
+      return;
+    }
+
     setCompiling(true);
+    setCompileStartedAt(Date.now());
+    setCompileProgress(8);
+    setCompileArtifactHash("");
+    setCompiledSourceHash("");
     setFirmwareReady(false);
     setFirmwareBinary(null);
     setCompileStatus("compiling");
-    setCompileMessage("Queuing compilation job...");
+    setCompileMessage("Queuing compilation job... this usually takes 1-2 minutes.");
     setPanelTab("code");
 
     try {
@@ -521,15 +827,16 @@ export default function IDEPage() {
         userId: user.uid,
         projectId,
         board: board.id,
-        code: generatedCode,
+        code: codeToCompile,
         status: "queued",
         createdAt: serverTimestamp(),
       });
 
       // Fetch ML header if needed
       const compileHeaders: Record<string, string> = {};
-      if (trainedModel?.headerUrl && generatedCode.includes(`${trainedModel.blockId}`)) {
-        setCompileMessage("Fetching ML model weights...");
+      if (trainedModel?.headerUrl && codeToCompile.includes(`${trainedModel.blockId}`)) {
+        setCompileProgress((p) => Math.max(p, 15));
+        setCompileMessage("Fetching ML model weights... this usually takes 1-2 minutes.");
         try {
           const hdrRes = await fetch(trainedModel.headerUrl);
           if (hdrRes.ok) {
@@ -541,29 +848,39 @@ export default function IDEPage() {
         }
       }
 
-      setCompileMessage("Job queued · ID: " + jobRef.id.slice(0, 8));
+      setCompileProgress((p) => Math.max(p, 28));
+      setCompileMessage("Job queued · ID: " + jobRef.id.slice(0, 8) + " · compiling now (1-2 min).");
       const endpoint = (import.meta.env.VITE_COMPILER_URL as string) || "/.netlify/functions/compile-firmware";
       // For local dev, call Cloud Run directly since Netlify functions aren't available
       const compileUrl = endpoint === "/.netlify/functions/compile-firmware" && window.location.hostname === "localhost"
         ? "https://bitblock-compiler-409440684176.us-central1.run.app/compile"
         : endpoint;
+      const includeAuthHeader = !compileUrl.startsWith("http");
       const response = await fetch(compileUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(includeAuthHeader && auth.currentUser
+            ? { Authorization: `Bearer ${await auth.currentUser.getIdToken()}` }
+            : {}),
+        },
         body: JSON.stringify({
           jobId: jobRef.id,
           projectId,
           boardId: board.id,
           fqbn: board.fqbn,
-          code: generatedCode,
+          code: codeToCompile,
           format: board.platform === "esp32" || board.platform === "esp8266" ? "bin" : (board.isAVR ? "hex" : "bin"),
           headers: compileHeaders,
         }),
       });
+      setCompileProgress((p) => Math.max(p, 82));
 
       const payload = await response.json().catch(() => ({} as any));
       if (!response.ok) {
-        throw new Error(payload?.error || `Compiler service failed (${response.status})`);
+        const detail = typeof payload?.details === "string" ? payload.details.trim() : "";
+        const base = payload?.error || `Compiler service failed (${response.status})`;
+        throw new Error(detail ? `${base}: ${detail}` : base);
       }
       if (payload?.parts && Array.isArray(payload.parts)) {
         // Multi-part firmware (ESP32/ESP8266)
@@ -578,7 +895,9 @@ export default function IDEPage() {
         }
         
         setFirmwareBinary({ parts: parsedParts });
+        setCompileArtifactHash(await hashCompiledArtifact({ parts: parsedParts }));
         const kb = (totalSize / 1024).toFixed(1);
+        setCompileProgress(100);
         setCompileMessage(`✓ Firmware built (multi-part bin) · ${kb}KB · Ready to flash`);
 
       } else {
@@ -598,29 +917,171 @@ export default function IDEPage() {
         }
         const binary = Uint8Array.from(atob(artifactBase64), (c) => c.charCodeAt(0)).buffer;
         setFirmwareBinary(binary);
+        setCompileArtifactHash(await hashCompiledArtifact(binary));
         const kb = (binary.byteLength / 1024).toFixed(1);
+        setCompileProgress(100);
         setCompileMessage(`✓ Firmware built (${(payload?.format || "bin").toUpperCase()}) · ${kb}KB · ${fileName || "artifact"} · Ready to flash`);
       }
 
       setFirmwareReady(true);
       setCompileStatus("success");
+      setCompiledSourceHash(await sha256Hex(codeToCompile));
       appendLog(`[Compile] Cloud compile complete for ${board.name}`);
       // Update compilation stat for user profile
       try {
         await updateDoc(doc(db, "users", user.uid), { compilationCount: increment(1) });
+        await incrementCompileCount();
       } catch (err) {
          console.warn("Failed to increment compilation count", err);
       }
     } catch (e: any) {
       setCompileStatus("error");
+      setCompileProgress(0);
       setCompileMessage(`Compilation failed: ${e?.message || "Unknown error"}`);
       appendLog(`[Error] Compile failed: ${e?.message || "Unknown error"}`);
     } finally {
       setCompiling(false);
+      setCompileStartedAt(null);
     }
   };
 
   const appendLog = (msg: string) => setSerialLog(l => [...l, msg]);
+
+  useEffect(() => {
+    if (!serialAutoScroll || panelTab !== "serial") return;
+    if (!serialScrollRef.current) return;
+    serialScrollRef.current.scrollTop = serialScrollRef.current.scrollHeight;
+  }, [serialLog, serialAutoScroll, panelTab]);
+
+  const hashCompiledArtifact = async (
+    artifact: ArrayBuffer | { parts: { offset: number, data: Uint8Array }[] } | null,
+  ) => {
+    if (!artifact) return "";
+    if (artifact instanceof ArrayBuffer) {
+      const bytes = Array.from(new Uint8Array(artifact)).map((b) => String.fromCharCode(b)).join("");
+      return sha256Hex(bytes);
+    }
+    const fingerprint = artifact.parts
+      .map((p) => `${p.offset}:${p.data.byteLength}:${Array.from(p.data.slice(0, 64)).join(",")}`)
+      .join("|");
+    return sha256Hex(fingerprint);
+  };
+
+  const handleExportToMarketplace = async () => {
+    if (!user || !projectId || exportingMarketplace) return;
+    if (compileStatus !== "success") {
+      await alert("Compile your current workspace project successfully before exporting.");
+      return;
+    }
+    const currentSourceHash = await sha256Hex(generatedCode);
+    if (compiledSourceHash && compiledSourceHash !== currentSourceHash) {
+      await alert("Blocks changed after your last compile. Compile again before exporting.");
+      return;
+    }
+
+    const name = exportName.trim();
+    const functionality = exportFunctionality.trim();
+    const description = exportDescription.trim();
+    if (!name || !functionality || !description) {
+      await alert("Please complete name, functionality, and description.");
+      return;
+    }
+    if (name.length > 128 || description.length > 2000) {
+      await alert("Name/description is too long.");
+      return;
+    }
+
+    setExportingMarketplace(true);
+    try {
+      const sourceHash = currentSourceHash;
+      const compiledHash = compileArtifactHash || sourceHash;
+      let blocksXmlSnapshot = "";
+      try {
+        if (workspaceRef.current && Blockly) {
+          const xml = Blockly.Xml.workspaceToDom(workspaceRef.current);
+          blocksXmlSnapshot = Blockly.utils.xml.domToText(xml) || "";
+        }
+      } catch {
+        blocksXmlSnapshot = "";
+      }
+      if (!blocksXmlSnapshot.trim()) {
+        await alert("Export blocked: this listing has no workspace block snapshot. Save your workspace and try again.");
+        return;
+      }
+      const existingSnap = await getDocs(collection(db, "marketplace"));
+      const existing = existingSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as any[];
+
+      const sameOutput = existing.find((b) => b.compiledOutputHash === compiledHash || b.sourceHash === sourceHash);
+      if (sameOutput) {
+        await alert(`Export blocked: "${sameOutput.name || "existing block"}" already outputs exactly the same code.`);
+        return;
+      }
+
+      const normalizedName = normalizeText(name);
+      const normalizedFn = normalizeText(functionality);
+      const normalizedDesc = normalizeText(description);
+      const nameMatches = existing.filter((b) => normalizeText(String(b.name || "")) === normalizedName).length;
+      const functionMatches = existing.filter((b) => normalizeText(String(b.functionality || "")) === normalizedFn).length;
+      const descMatches = existing.filter((b) => normalizeText(String(b.description || b.desc || "")) === normalizedDesc).length;
+      if (nameMatches >= 2 || functionMatches >= 2 || descMatches >= 2) {
+        await alert("Export blocked: similar community blocks already exist (anti-spam protection).");
+        return;
+      }
+
+      await addDoc(collection(db, "marketplace"), {
+        authorId: user.uid,
+        author: user.displayName || user.email || "BitBuilder",
+        projectId,
+        name,
+        functionality,
+        description,
+        desc: description,
+        category: exportCategory,
+        boardId: currentBoard.id,
+        boards: [currentBoard.name],
+        sourceCode: generatedCode,
+        blocksXml: blocksXmlSnapshot,
+        sourceHash,
+        compiledOutputHash: compiledHash,
+        verified: false,
+        downloads: 0,
+        rating: 0,
+        createdAt: serverTimestamp(),
+      });
+      await updateDoc(doc(db, "users", user.uid), { publishedBlocks: increment(1) });
+
+      setShowMarketplaceExport(false);
+      setExportName("");
+      setExportFunctionality("");
+      setExportDescription("");
+      await alert("Your compiled project has been exported to the marketplace.");
+    } catch (e: any) {
+      await alert(`Marketplace export failed: ${e?.message || "Unknown error"}`);
+    } finally {
+      setExportingMarketplace(false);
+    }
+  };
+
+  /** AVR/STK500: single buffer. ESP multi-part builds must use the full `parts` object — never take only one segment. */
+  const getPrimaryFirmwareBuffer = (artifact: ArrayBuffer | { parts: { offset: number, data: Uint8Array }[] } | null): ArrayBuffer | null => {
+    if (!artifact) return null;
+    if (artifact instanceof ArrayBuffer) return artifact;
+    const firstPart = artifact.parts?.[0];
+    if (!firstPart?.data) return null;
+    return new Uint8Array(firstPart.data).buffer;
+  };
+
+  const getEspFlashPayload = (
+    artifact: ArrayBuffer | { parts: { offset: number; data: Uint8Array }[] } | null,
+  ): ArrayBuffer | { parts: { offset: number; data: Uint8Array }[] } | null => {
+    if (!artifact) return null;
+    if (artifact instanceof ArrayBuffer) return artifact.byteLength ? artifact : null;
+    const parts = artifact.parts;
+    if (!Array.isArray(parts) || parts.length === 0) return null;
+    const nonEmpty = parts.filter((p) => p?.data && p.data.byteLength > 0);
+    if (nonEmpty.length === 0) return null;
+    return { parts: nonEmpty };
+  };
 
   const ensureSerialPort = async () => {
     // Reuse an already connected port first to avoid repeated pairing prompts.
@@ -661,6 +1122,17 @@ export default function IDEPage() {
       }
     } catch {
       // ignore if serial api errors
+    }
+  };
+
+  const handleDisconnectBoard = async () => {
+    try {
+      await releaseOpenSerialPorts();
+      setConnectedPort(null);
+      appendLog("[WebSerial] Device disconnected.");
+    } catch (e: any) {
+      appendLog(`[WebSerial] Disconnect issue: ${e?.message || "Unknown error"}`);
+      setConnectedPort(null);
     }
   };
 
@@ -723,18 +1195,27 @@ export default function IDEPage() {
     try {
       const port = await ensureSerialPort();
       appendLog("[WebSerial] Port acquired for flashing");
-
-      if (!firmwareBinary || firmwareBinary.byteLength === 0) {
-        appendLog("[Error] Firmware artifact missing or empty.");
-        return;
-      }
+      await releaseOpenSerialPorts();
 
       if (board.platform === "esp32" || board.platform === "esp8266") {
+          const espPayload = getEspFlashPayload(firmwareBinary);
+          if (!espPayload) {
+            appendLog("[Error] Firmware artifact missing or empty.");
+            return;
+          }
+          if (typeof espPayload === "object" && "parts" in espPayload) {
+            appendLog(`[Flash] Multi-part image (${espPayload.parts.length} regions) — bootloader, partition table, and app.`);
+          }
           // esptool-js Transport handles port.open() internally,
           // flashESPBlock now closes the port first before opening via Transport.
           appendLog(`[Flash] Starting ESP flash for ${board.name}...`);
-          await flashESPBlock(port, 115200, firmwareBinary, appendLog);
+          await flashESPBlock(port, 115200, espPayload, appendLog);
       } else if (board.isAVR) {
+          const primaryFirmware = getPrimaryFirmwareBuffer(firmwareBinary);
+          if (!primaryFirmware || primaryFirmware.byteLength === 0) {
+            appendLog("[Error] Firmware artifact missing or empty.");
+            return;
+          }
           // STK500 protocol needs the port; close any existing streams first
           // so stk500Protocol can open fresh reader/writer handles.
           try {
@@ -748,8 +1229,7 @@ export default function IDEPage() {
           // The compiler returns Intel HEX text for AVR boards (format: "hex").
           // firmwareBinary contains the ASCII bytes of that hex file — decode
           // it back to a string and pass directly to the STK500 flasher.
-          const buffer = firmwareBinary instanceof ArrayBuffer ? firmwareBinary : (firmwareBinary as any).parts[0].data.buffer;
-          const hexData = new TextDecoder().decode(buffer);
+          const hexData = new TextDecoder().decode(primaryFirmware);
           await flashSTK500(port, hexData, appendLog);
       } else {
           appendLog(`[Error] No flash protocol available for platform: ${board.platform}`);
@@ -760,6 +1240,15 @@ export default function IDEPage() {
       if (e.name !== "NotFoundError") {
         appendLog(`[Error] ${e.message}`);
       }
+    } finally {
+      // Ensure WebSerial state is clean so repeated ESP flashes
+      // work without forcing a full page refresh.
+      try {
+        await releaseOpenSerialPorts();
+      } catch {
+        // ignore cleanup errors
+      }
+      setConnectedPort(null);
     }
   };
 
@@ -775,13 +1264,14 @@ export default function IDEPage() {
     <div className="ide-layout" style={{ 
       fontFamily: "Space Grotesk, sans-serif",
       gridTemplateColumns: viewMode === "ml" ? "1fr" : (sidebarExpanded ? "260px 1fr 340px" : "48px 1fr 340px"),
+      gridTemplateRows: "auto 1fr 32px",
       transition: "grid-template-columns 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
     }}>
 
       {/* ── Toolbar ─────────────────────────────────────── */}
       <header className="ide-toolbar glass-dark" style={{
-        display: "flex", alignItems: "center", gap: 12,
-        padding: "0 16px", borderBottom: "1px solid rgba(157,39,222,0.15)",
+        display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+        padding: "8px 16px 0", borderBottom: "1px solid rgba(157,39,222,0.15)",
       }}>
         <Link to="/dashboard" style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: 8 }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(242,242,240,0.5)" strokeWidth="3">
@@ -809,9 +1299,15 @@ export default function IDEPage() {
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 9h16v11H4z"/><path d="M4 9l8-5 8 5"/></svg>
               Workspace
             </button>
-            <button
+             <button
                onClick={() => {
-                 if (isMlSupported) setViewMode("ml");
+                 if (isMlSupported) {
+                   setViewMode("ml");
+                   if (!mlOnboardingShownRef.current) {
+                     mlOnboardingShownRef.current = true;
+                     setShowMlOnboarding(true);
+                   }
+                 }
                }}
                title={!isMlSupported ? "Board does not support ML Pipeline" : ""}
                style={{
@@ -880,23 +1376,25 @@ export default function IDEPage() {
         {/* Connect Board */}
         <button
           id="connect-btn"
-          onClick={handleConnectBoard}
+          onClick={connectedPort ? handleDisconnectBoard : handleConnectBoard}
           className="btn-ghost"
           style={{ padding: "7px 18px", fontSize: 12, color: connectedPort ? "#4ade80" : "inherit" }}
+          title={connectedPort ? "Disconnect currently paired board" : "Pair board via WebSerial"}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 6 }}>
             <path d="M8 8v8M16 8v8M4 12h16"/>
           </svg>
-          {connectedPort ? "Board Connected" : "Connect Board"}
+          {connectedPort ? "Disconnect Board" : "Connect Board"}
         </button>
 
         {/* Compile */}
         <button
           id="compile-btn"
           onClick={handleCompile}
-          disabled={compiling}
+          disabled={compiling || !canCompile}
           className="btn-primary"
-          style={{ padding: "7px 18px", fontSize: 12 }}
+          style={{ padding: "7px 18px", fontSize: 12, opacity: !canCompile ? 0.55 : 1 }}
+          title={!canCompile ? (compileBlockReason || "Compile limit reached") : "Compile project"}
         >
           {compiling ? (
             <>
@@ -905,6 +1403,7 @@ export default function IDEPage() {
                 <path d="M12 2 A10 10 0 0 1 22 12" stroke="white" strokeWidth="3" strokeLinecap="round" fill="none" />
               </svg>
               Compiling...
+              {" "}1-2 min
             </>
           ) : (
             <>
@@ -929,68 +1428,147 @@ export default function IDEPage() {
           </svg>
           Flash Device
         </button>
+
+        <button
+          id="export-marketplace-btn"
+          onClick={() => setShowMarketplaceExport(true)}
+          disabled={compileStatus !== "success"}
+          className="btn-ghost"
+          style={{ fontSize: 12, opacity: compileStatus === "success" ? 1 : 0.45 }}
+          title={compileStatus === "success" ? "Export compiled project to marketplace" : "Compile first to enable export"}
+        >
+          Export to Marketplace
+        </button>
+        <button
+          id="import-installed-marketplace-btn"
+          onClick={importInstalledMarketplaceItems}
+          disabled={importingInstalled}
+          className="btn-ghost"
+          style={{ fontSize: 12, opacity: importingInstalled ? 0.6 : 1 }}
+          title="Import installed marketplace items into workspace"
+        >
+          {importingInstalled ? "Importing..." : "Import Installed Items"}
+        </button>
+        {showPlanBanner && (
+          <div style={{ width: "100%", marginTop: 0 }}>
+            <PlanLimitBanner fullBleed squareTop />
+          </div>
+        )}
       </header>
 
       {/* ── Sidebar: Block categories info ──────────────── */}
       <aside className="ide-sidebar" style={{
         background: "#0D0018",
         borderRight: "1px solid rgba(157,39,222,0.1)",
-        padding: "12px 0",
+        padding: sidebarExpanded ? "12px 0" : 0,
         display: viewMode === "blocks" ? "flex" : "none",
         flexDirection: "column",
-        overflow: "hidden"
+        overflow: "hidden",
+        minWidth: 0,
       }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px 8px" }}>
-           {sidebarExpanded && (
-             <span style={{ fontSize: 10, color: "rgba(242,242,240,0.25)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
-               Quick Help
-             </span>
-           )}
-           <button 
-              onClick={() => setSidebarExpanded(!sidebarExpanded)} 
-              className="btn-ghost" 
-              style={{ padding: sidebarExpanded ? "2px 6px" : "4px 8px", marginLeft: sidebarExpanded ? 0 : "auto", marginRight: sidebarExpanded ? 0 : "auto" }}
-           >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(242,242,240,0.5)" strokeWidth="2">
-                 {sidebarExpanded ? <path d="M15 18l-6-6 6-6" /> : <path d="M9 18l6-6-6-6" />}
-              </svg>
-           </button>
-        </div>
-
-        {sidebarExpanded && (
-          <div style={{ paddingBottom: 16 }}>
-            {SIDEBAR_ITEMS.map((item) => (
-              <div key={item.label} 
-                onClick={() => setActiveGuide({ label: item.label, content: QUICK_GUIDES[item.label] })}
-                style={{
-                  padding: "8px 16px", borderRadius: 6, margin: "1px 8px",
-                  cursor: "pointer", transition: "0.15s",
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(157,39,222,0.15)")}
-                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+        {!sidebarExpanded ? (
+          <button
+            type="button"
+            aria-expanded={false}
+            aria-label="Expand Quick Help"
+            title="Expand Quick Help"
+            onClick={() => setSidebarExpanded(true)}
+            style={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 12,
+              width: "100%",
+              minHeight: 0,
+              border: "none",
+              background: "rgba(157,39,222,0.04)",
+              cursor: "pointer",
+              padding: "12px 0",
+              borderRight: "2px solid rgba(157,39,222,0.2)",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "rgba(157,39,222,0.12)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "rgba(157,39,222,0.04)";
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(157,39,222,0.65)" strokeWidth="2" aria-hidden>
+              <path d="M9 18l6-6-6-6" />
+            </svg>
+            <span
+              style={{
+                display: "inline-block",
+                writingMode: "vertical-rl",
+                textOrientation: "mixed",
+                transform: "rotate(180deg)",
+                transformOrigin: "center center",
+                fontSize: 16,
+                fontWeight: 700,
+                letterSpacing: "0.22em",
+                textTransform: "uppercase",
+                color: "rgba(242,242,240,0.55)",
+                fontFamily: "Superstar, fantasy",
+                userSelect: "none",
+              }}
+            >
+              Quick Help
+            </span>
+          </button>
+        ) : (
+          <>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px 8px" }}>
+              <span style={{ fontSize: 10, color: "rgba(242,242,240,0.25)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+                Quick Help
+              </span>
+              <button
+                type="button"
+                aria-expanded
+                aria-label="Collapse Quick Help"
+                onClick={() => setSidebarExpanded(false)}
+                className="btn-ghost"
+                style={{ padding: "2px 6px" }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div>
-                    <p style={{ fontSize: 12, fontWeight: 600, color: "#9D27DE", fontFamily: "Superstar, fantasy", letterSpacing: "0.05em" }}>{item.label}</p>
-                    <p style={{ fontSize: 10, color: "rgba(242,242,240,0.4)" }}>{item.hint}</p>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(242,242,240,0.5)" strokeWidth="2" aria-hidden>
+                  <path d="M15 18l-6-6 6-6" />
+                </svg>
+              </button>
+            </div>
+
+            <div style={{ paddingBottom: 16 }}>
+              {SIDEBAR_ITEMS.map((item) => (
+                <div key={item.label}
+                  onClick={() => setActiveGuide({ label: item.label, content: QUICK_GUIDES[item.label] })}
+                  style={{
+                    padding: "8px 16px", borderRadius: 6, margin: "1px 8px",
+                    cursor: "pointer", transition: "0.15s",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(157,39,222,0.15)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div>
+                      <p style={{ fontSize: 12, fontWeight: 600, color: "#9D27DE", fontFamily: "Superstar, fantasy", letterSpacing: "0.05em" }}>{item.label}</p>
+                      <p style={{ fontSize: 10, color: "rgba(242,242,240,0.4)" }}>{item.hint}</p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
 
-        {sidebarExpanded && (
-          <div style={{ margin: "auto 16px 16px", padding: "12px", background: "rgba(157,39,222,0.05)", borderRadius: 8, border: "1px solid rgba(157,39,222,0.1)" }}>
-            <CassetteMascot size={64} mood={compileStatus === "success" ? "excited" : compileStatus === "error" ? "thinking" : "idle"} animate />
-            <p style={{ fontSize: 10, color: "rgba(242,242,240,0.35)", textAlign: "center", marginTop: 6 }}>
-              {compileStatus === "success"
-                ? (firmwareReady ? "Ready to flash! 🎉" : "Code ready · Firmware build pending")
-                : compileStatus === "error"
-                ? "Check your blocks"
-                : "Drag blocks to build"}
-            </p>
-          </div>
+            <div style={{ margin: "auto 16px 16px", padding: "12px", background: "rgba(157,39,222,0.05)", borderRadius: 8, border: "1px solid rgba(157,39,222,0.1)" }}>
+              <CassetteMascot size={64} mood={compileStatus === "success" ? "excited" : compileStatus === "error" ? "thinking" : "idle"} animate />
+              <p style={{ fontSize: 10, color: "rgba(242,242,240,0.35)", textAlign: "center", marginTop: 6 }}>
+                {compileStatus === "success"
+                  ? (firmwareReady ? "Ready to flash! 🎉" : "Code ready · Firmware build pending")
+                  : compileStatus === "error"
+                  ? "Check your blocks"
+                  : "Drag blocks to build"}
+              </p>
+            </div>
+          </>
         )}
       </aside>
 
@@ -1003,7 +1581,7 @@ export default function IDEPage() {
                  onClick={(e) => e.stopPropagation()}
             >
                <h2 style={{ color: "#F2F2F0", fontWeight: 700, fontSize: 20, marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9D27DE" strokeWidth="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9D27DE" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
                   {activeGuide.label} Guide
                </h2>
                <div style={{ height: 1, width: "100%", background: "rgba(157,39,222,0.2)", marginBottom: 16 }} />
@@ -1084,6 +1662,29 @@ export default function IDEPage() {
                   color: compileStatus === "success" ? "#4ade80" : compileStatus === "error" ? "#f87171" : "#B94FF0",
                 }}>
                   {compileMessage}
+                  {compileStatus === "compiling" && (
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{
+                        height: 5,
+                        width: "100%",
+                        borderRadius: 999,
+                        background: "rgba(185,79,240,0.22)",
+                        overflow: "hidden",
+                      }}>
+                        <div
+                          style={{
+                            height: "100%",
+                            width: `${Math.max(4, Math.min(100, compileProgress))}%`,
+                            background: "linear-gradient(90deg, #9D27DE, #C084FC)",
+                            transition: "width 0.8s ease",
+                          }}
+                        />
+                      </div>
+                      <div style={{ marginTop: 6, fontSize: 10, color: "rgba(242,242,240,0.72)" }}>
+                        Compiling in cloud... usually 1-2 minutes.
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1139,9 +1740,19 @@ export default function IDEPage() {
             <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
               <div style={{ padding: "8px 14px", borderBottom: "1px solid rgba(157,39,222,0.08)", display: "flex", justifyContent: "space-between" }}>
                 <span style={{ fontSize: 10, color: "rgba(242,242,240,0.3)" }}>Serial Monitor</span>
-                <button onClick={() => setSerialLog([])} className="btn-ghost" style={{ fontSize: 10, padding: "2px 8px" }}>Clear</button>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button
+                    onClick={() => setSerialAutoScroll((v) => !v)}
+                    className="btn-ghost"
+                    style={{ fontSize: 10, padding: "2px 8px" }}
+                    title={serialAutoScroll ? "Disable auto-scroll" : "Enable auto-scroll"}
+                  >
+                    {serialAutoScroll ? "Auto-scroll: On" : "Auto-scroll: Off"}
+                  </button>
+                  <button onClick={() => setSerialLog([])} className="btn-ghost" style={{ fontSize: 10, padding: "2px 8px" }}>Clear</button>
+                </div>
               </div>
-              <div style={{ flex: 1, overflow: "auto", padding: 14 }}>
+              <div ref={serialScrollRef} style={{ flex: 1, overflow: "auto", padding: 14 }}>
                 {serialLog.length === 0 ? (
                   <p style={{ fontSize: 12, color: "rgba(242,242,240,0.25)", fontFamily: "JetBrains Mono, monospace" }}>
                     {flashSupported ? "Connect and flash your device to see output." : "⚠ WebSerial not supported.\nUse Chrome or Edge."}
@@ -1181,7 +1792,7 @@ export default function IDEPage() {
 
       {/* ── Machine Learning Pipeline ──────────────────── */}
       {viewMode === "ml" && (
-          <div style={{ gridColumn: "1 / -1", gridRow: 2, flex: 1, display: "flex", background: "#0A0A0A", padding: 32, gap: 32, overflow: "auto", height: "100%", boxSizing: "border-box", position: "relative" }}>
+          <div style={{ gridColumn: "1 / -1", gridRow: 2, flex: 1, display: "flex", justifyContent: "center", background: "#0A0A0A", padding: 16, gap: 16, overflow: "auto", height: "100%", boxSizing: "border-box", position: "relative" }}>
               {!isMlSupported && (
                  <div style={{ 
                    position: "absolute", inset: 0, zIndex: 50, background: "rgba(10,10,10,0.85)", 
@@ -1209,45 +1820,199 @@ export default function IDEPage() {
                  </div>
               )}
 
-              <div style={{ flex: 1, background: "#1A0628", borderRadius: 12, border: "1px solid rgba(157,39,222,0.3)", display: "flex", flexDirection: "column", opacity: isMlSupported ? 1 : 0.4 }}>
-                  <div style={{ padding: 16, borderBottom: "1px solid rgba(157,39,222,0.15)", background: "rgba(157,39,222,0.05)" }}>
-                      <h2 style={{ fontSize: 16, fontWeight: 700, color: "#F2F2F0", display: "flex", alignItems: "center", gap: 8 }}>
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9D27DE" strokeWidth="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                          Data Collection
-                      </h2>
-                      <p style={{ fontSize: 12, color: "rgba(242,242,240,0.5)", marginTop: 4 }}>Stream IMU, Audio, and Image data for training</p>
+              <div style={{ width: "min(1440px, 100%)", background: "#1A0628", borderRadius: 12, border: "1px solid rgba(157,39,222,0.3)", display: "flex", flexDirection: "column", opacity: isMlSupported ? 1 : 0.4 }}>
+                <div style={{ padding: "10px 16px", borderBottom: "1px solid rgba(157,39,222,0.15)", background: "rgba(157,39,222,0.05)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <h2 style={{ fontSize: 16, fontWeight: 700, color: "#F2F2F0", display: "flex", alignItems: "center", gap: 8 }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9D27DE" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/></svg>
+                    ML Pipeline
+                  </h2>
+                  <div style={{ display: "flex", background: "rgba(0,0,0,0.25)", borderRadius: 8, padding: 3, border: "1px solid rgba(157,39,222,0.15)", gap: 4 }}>
+                    <button
+                      onClick={() => setMlPipelineTab("collect")}
+                      style={{
+                        border: "none",
+                        padding: "6px 10px",
+                        borderRadius: 6,
+                        fontSize: 11,
+                        cursor: "pointer",
+                        background: mlPipelineTab === "collect" ? "rgba(157,39,222,0.2)" : "transparent",
+                        color: mlPipelineTab === "collect" ? "#F2F2F0" : "rgba(242,242,240,0.45)",
+                      }}
+                    >
+                      Data Collection
+                    </button>
+                    <button
+                      onClick={() => setMlPipelineTab("train")}
+                      style={{
+                        border: "none",
+                        padding: "6px 10px",
+                        borderRadius: 6,
+                        fontSize: 11,
+                        cursor: "pointer",
+                        background: mlPipelineTab === "train" ? "rgba(157,39,222,0.2)" : "transparent",
+                        color: mlPipelineTab === "train" ? "#F2F2F0" : "rgba(242,242,240,0.45)",
+                      }}
+                    >
+                      Training
+                    </button>
+                    <button
+                      onClick={() => setMlPipelineTab("versions")}
+                      style={{
+                        border: "none",
+                        padding: "6px 10px",
+                        borderRadius: 6,
+                        fontSize: 11,
+                        cursor: "pointer",
+                        background: mlPipelineTab === "versions" ? "rgba(157,39,222,0.2)" : "transparent",
+                        color: mlPipelineTab === "versions" ? "#F2F2F0" : "rgba(242,242,240,0.45)",
+                      }}
+                    >
+                      Versions
+                    </button>
+                    <button
+                      onClick={() => setMlPipelineTab("test")}
+                      style={{
+                        border: "none",
+                        padding: "6px 10px",
+                        borderRadius: 6,
+                        fontSize: 11,
+                        cursor: "pointer",
+                        background: mlPipelineTab === "test" ? "rgba(157,39,222,0.2)" : "transparent",
+                        color: mlPipelineTab === "test" ? "#F2F2F0" : "rgba(242,242,240,0.45)",
+                      }}
+                    >
+                      Inference Testing
+                    </button>
                   </div>
-                  <div style={{ flex: 1, overflow: "auto", position: "relative" }}>
-                     <DataCollection projectId={projectId || ""} boardId={project?.board || "esp32-wroom"} task={mlTask} architecture={mlArch} />
-                  </div>
-              </div>
+                </div>
 
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 32, opacity: isMlSupported ? 1 : 0.4 }}>
-                  <div style={{ flex: 1, background: "#1A0628", borderRadius: 12, border: "1px solid rgba(157,39,222,0.3)", display: "flex", flexDirection: "column" }}>
-                     <div style={{ padding: 16, borderBottom: "1px solid rgba(157,39,222,0.15)", background: "rgba(157,39,222,0.05)" }}>
-                          <h2 style={{ fontSize: 16, fontWeight: 700, color: "#F2F2F0", display: "flex", alignItems: "center", gap: 8 }}>
-                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#eab308" strokeWidth="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                              Cloud Run Training
-                          </h2>
-                     </div>
-                     <div style={{ flex: 1, overflow: "auto", position: "relative" }}>
-                        <TrainingView projectId={projectId || ""} boardId={project?.board || "esp32-wroom"} task={mlTask} setTask={setMlTask} selectedArch={mlArch} setSelectedArch={setMlArch} />
-                     </div>
-                  </div>
-                  
-                  <div style={{ flex: 1, background: "#1A0628", borderRadius: 12, border: "1px solid rgba(157,39,222,0.3)", display: "flex", flexDirection: "column" }}>
-                     <div style={{ padding: 16, borderBottom: "1px solid rgba(157,39,222,0.15)", background: "rgba(157,39,222,0.05)" }}>
-                          <h2 style={{ fontSize: 16, fontWeight: 700, color: "#F2F2F0", display: "flex", alignItems: "center", gap: 8 }}>
-                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-                              Inference Testing
-                          </h2>
-                     </div>
-                     <div style={{ flex: 1, overflow: "auto", position: "relative" }}>
-                        <TestingView />
-                     </div>
-                  </div>
+                <div style={{ flex: 1, overflow: "auto", position: "relative" }}>
+                  {mlPipelineTab === "collect" && (
+                    <DataCollection projectId={projectId || ""} boardId={project?.board || "esp32-wroom"} task={mlTask} architecture={mlArch} />
+                  )}
+                  {mlPipelineTab === "train" && (
+                    <TrainingView projectId={projectId || ""} boardId={project?.board || "esp32-wroom"} task={mlTask} setTask={setMlTask} selectedArch={mlArch} setSelectedArch={setMlArch} onGoToCollect={() => setMlPipelineTab("collect")} canStartTraining={canStartTraining} trainingBlockReason={trainingBlockReason} incrementTrainingCount={incrementTrainingCount} />
+                  )}
+                  {mlPipelineTab === "versions" && projectId && (
+                    <ModelRegistry
+                      projectId={projectId}
+                      pipelineArchitecture={mlArch}
+                      activeJobId={project?.mlActiveTrainingJobId ?? null}
+                      onTestModel={(jobId) => {
+                        setInferenceJobOverride(jobId);
+                        setMlPipelineTab("test");
+                      }}
+                    />
+                  )}
+                  {mlPipelineTab === "test" && (
+                    <TestingView
+                      projectId={projectId || ""}
+                      architecture={mlArch}
+                      inferenceJobId={
+                        inferenceJobOverride ??
+                        (typeof project?.mlActiveTrainingJobId === "string" && project.mlActiveTrainingJobId
+                          ? project.mlActiveTrainingJobId
+                          : undefined)
+                      }
+                    />
+                  )}
+                </div>
               </div>
           </div>
+      )}
+
+      {/* ── ML Pipeline Onboarding Popup ──────────────── */}
+      {showMlOnboarding && (
+        <div
+          style={{
+            position: "fixed", inset: 0, zIndex: 200,
+            background: "rgba(0,0,0,0.75)",
+            backdropFilter: "blur(6px)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            animation: "fade-in 0.25s ease",
+          }}
+          onClick={() => setShowMlOnboarding(false)}
+        >
+          <div
+            style={{
+              background: "linear-gradient(170deg, #1A0628 0%, #12031C 100%)",
+              border: "1px solid rgba(157,39,222,0.4)",
+              borderRadius: 16,
+              padding: "36px 40px",
+              width: 520,
+              maxWidth: "92vw",
+              boxShadow: "0 24px 80px rgba(0,0,0,0.6), 0 0 40px rgba(157,39,222,0.1)",
+              animation: "slide-up 0.3s ease",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Icon */}
+            <div style={{
+              width: 56, height: 56, borderRadius: 14,
+              background: "rgba(157,39,222,0.12)",
+              border: "1px solid rgba(157,39,222,0.25)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              marginBottom: 20,
+            }}>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#B94FF0" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 16v-4" />
+                <path d="M12 8h.01" />
+              </svg>
+            </div>
+
+            <h2 style={{ fontSize: 20, fontWeight: 700, color: "#F2F2F0", marginBottom: 8 }}>
+              Before You Start
+            </h2>
+            <p style={{ fontSize: 13, color: "rgba(242,242,240,0.55)", lineHeight: 1.65, marginBottom: 20 }}>
+              Your data collection format depends on the <strong style={{ color: "#E0D8F0" }}>task type</strong> and <strong style={{ color: "#E0D8F0" }}>model architecture</strong> you choose.
+              Please verify these settings are correct before recording any samples.
+            </p>
+
+            {/* Current settings summary */}
+            <div style={{
+              background: "rgba(0,0,0,0.3)",
+              border: "1px solid rgba(157,39,222,0.15)",
+              borderRadius: 10,
+              padding: "14px 18px",
+              marginBottom: 20,
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+            }}>
+              {[
+                { label: "Board", value: currentBoard.name, color: currentBoard.color },
+                { label: "Task Type", value: mlTask.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()), color: "#B94FF0" },
+                { label: "Architecture", value: ML_ARCHITECTURES[mlArch]?.name || mlArch || "Not selected", color: "#4ade80" },
+                { label: "Expected Input", value: ML_ARCHITECTURES[mlArch]?.recommendedInput || "—", color: "#F59E0B" },
+              ].map((row) => (
+                <div key={row.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 12, color: "rgba(242,242,240,0.4)" }}>{row.label}</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: row.color, display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: row.color, display: "inline-block", flexShrink: 0 }} />
+                    {row.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <p style={{ fontSize: 11, color: "rgba(242,242,240,0.35)", lineHeight: 1.6, marginBottom: 24 }}>
+              You can change the task and architecture from the <strong style={{ color: "rgba(242,242,240,0.5)" }}>Training</strong> tab at any time before starting a training job.
+              Collecting data in the wrong format may require re-recording samples.
+            </p>
+
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button
+                id="ml-onboarding-proceed-btn"
+                className="btn-primary"
+                style={{ padding: "10px 28px", fontSize: 13, fontWeight: 600, borderRadius: 8 }}
+                onClick={() => setShowMlOnboarding(false)}
+              >
+                Got it — Proceed
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ESP32-CAM Setup Wizard Modal */}
@@ -1270,6 +2035,51 @@ export default function IDEPage() {
                  <button className="btn-primary" onClick={() => performSerialFlash(getBoardConfig("esp32-cam"))}>Continue Flash</button>
               </div>
            </div>
+        </div>
+      )}
+
+      {showMarketplaceExport && (
+        <div
+          style={{ position: "fixed", inset: 0, zIndex: 220, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={() => !exportingMarketplace && setShowMarketplaceExport(false)}
+        >
+          <div
+            style={{ background: "#12031C", border: "1px solid #9D27DE", borderRadius: 12, padding: 24, width: 520, maxWidth: "92%" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 style={{ fontSize: 18, color: "#F2F2F0", marginBottom: 8 }}>Export Compiled Project</h2>
+            <p style={{ fontSize: 12, color: "rgba(242,242,240,0.55)", marginBottom: 14 }}>
+              This publishes your current workspace project to the community marketplace.
+            </p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+              <input className="input" placeholder="Marketplace name" value={exportName} onChange={(e) => setExportName(e.target.value)} />
+              <select className="input" value={exportCategory} onChange={(e) => setExportCategory(e.target.value)} style={{ cursor: "pointer" }}>
+                {MARKETPLACE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <input
+              className="input"
+              placeholder="Functionality (what this block does)"
+              value={exportFunctionality}
+              onChange={(e) => setExportFunctionality(e.target.value)}
+            />
+            <textarea
+              className="input"
+              placeholder="Description for community users"
+              value={exportDescription}
+              onChange={(e) => setExportDescription(e.target.value)}
+              style={{ marginTop: 10, minHeight: 90, resize: "vertical" }}
+            />
+            <div style={{ marginTop: 12, fontSize: 11, color: "rgba(242,242,240,0.45)" }}>
+              Board: {currentBoard.name} · Status: {compileStatus === "success" ? "Compiled" : "Not compiled"}
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+              <button className="btn-secondary" onClick={() => setShowMarketplaceExport(false)} disabled={exportingMarketplace}>Cancel</button>
+              <button className="btn-primary" onClick={handleExportToMarketplace} disabled={exportingMarketplace || compileStatus !== "success"}>
+                {exportingMarketplace ? "Exporting..." : "Export"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1298,7 +2108,9 @@ export default function IDEPage() {
                      setPromptDialog(null);
                    }
                  }}
-                 ref={(input) => input && setTimeout(() => input.focus(), 10)}
+                ref={(input) => {
+                  if (input) setTimeout(() => input.focus(), 10);
+                }}
                />
                <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, marginTop: 24 }}>
                  <button className="btn-secondary" onClick={() => { promptDialog.callback(null); setPromptDialog(null); }}>

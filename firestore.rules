@@ -26,6 +26,48 @@ service cloud.firestore {
       return field is timestamp;
     }
 
+    function isValidPlan(plan) {
+      return plan in ['free', 'maker', 'pro', 'team'];
+    }
+
+    function userPlan(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data.get('plan', 'free');
+    }
+
+    function compileDailyLimit(uid) {
+      return userPlan(uid) == 'team' ? 200
+        : userPlan(uid) == 'pro' ? 120
+        : userPlan(uid) == 'maker' ? 60
+        : 3;
+    }
+
+    function compileMonthlyLimit(uid) {
+      return userPlan(uid) == 'free' ? 20 : -1; // -1 means unlimited
+    }
+
+    function trainingMonthlyLimit(uid) {
+      return userPlan(uid) == 'team' ? 40
+        : userPlan(uid) == 'pro' ? 30
+        : userPlan(uid) == 'maker' ? 12
+        : 2;
+    }
+
+    function usageRef(uid) {
+      return /databases/$(database)/documents/users/$(uid)/usage/current;
+    }
+
+    function usageCompilesToday(uid) {
+      return exists(usageRef(uid)) ? get(usageRef(uid)).data.get('compilesToday', 0) : 0;
+    }
+
+    function usageCompilesMonth(uid) {
+      return exists(usageRef(uid)) ? get(usageRef(uid)).data.get('compilesThisMonth', 0) : 0;
+    }
+
+    function usageTrainingMonth(uid) {
+      return exists(usageRef(uid)) ? get(usageRef(uid)).data.get('trainingJobsThisMonth', 0) : 0;
+    }
+
     // ── Users ────────────────────────────────────────────
     // Users can only read/write their own profile.
     // Admins can read any user profile.
@@ -41,6 +83,7 @@ service cloud.firestore {
         && request.resource.data.get('uid', userId) == userId
         && request.resource.data.get('email', '') == resource.data.get('email', '') // email immutable
         && request.resource.data.get('role', 'user') == resource.data.get('role', 'user') // role immutable by user
+        && request.resource.data.get('plan', 'free') == resource.data.get('plan', 'free') // plan immutable by user (webhook/admin only)
         && (
           // If the display name is NOT changing, bypass the cooldown (e.g. for photoURL updates)
           request.resource.data.get('displayName', '') == resource.data.get('displayName', '')
@@ -58,6 +101,55 @@ service cloud.firestore {
       // Users can manage their own installed marketplace blocks.
       match /installedBlocks/{blockId} {
         allow read, write: if isOwner(userId);
+      }
+
+      // ── Usage Tracking (subcollection) ─────────────────────
+      // Users can read/write their own usage counters.
+      // Admins can read any user's usage counters.
+      match /usage/{docId} {
+        allow read: if isOwner(userId) || isAdmin();
+        // Users may update their own counters, but only monotonically (+0/+1)
+        // and never beyond plan hard caps.
+        allow create: if isOwner(userId)
+          && request.resource.data.keys().hasOnly([
+            'compilesToday',
+            'compilesThisMonth',
+            'lastCompileDate',
+            'lastCompileMonth',
+            'trainingJobsThisMonth',
+            'lastTrainingMonth'
+          ])
+          && request.resource.data.compilesToday is int
+          && request.resource.data.compilesThisMonth is int
+          && request.resource.data.trainingJobsThisMonth is int
+          && request.resource.data.compilesToday >= 0
+          && request.resource.data.compilesThisMonth >= 0
+          && request.resource.data.trainingJobsThisMonth >= 0
+          && request.resource.data.compilesToday <= compileDailyLimit(userId)
+          && (compileMonthlyLimit(userId) < 0 || request.resource.data.compilesThisMonth <= compileMonthlyLimit(userId))
+          && request.resource.data.trainingJobsThisMonth <= trainingMonthlyLimit(userId);
+        allow update: if isOwner(userId)
+          && request.resource.data.keys().hasOnly([
+            'compilesToday',
+            'compilesThisMonth',
+            'lastCompileDate',
+            'lastCompileMonth',
+            'trainingJobsThisMonth',
+            'lastTrainingMonth'
+          ])
+          && request.resource.data.compilesToday is int
+          && request.resource.data.compilesThisMonth is int
+          && request.resource.data.trainingJobsThisMonth is int
+          && request.resource.data.compilesToday >= resource.data.compilesToday
+          && request.resource.data.compilesToday <= resource.data.compilesToday + 1
+          && request.resource.data.compilesThisMonth >= resource.data.compilesThisMonth
+          && request.resource.data.compilesThisMonth <= resource.data.compilesThisMonth + 1
+          && request.resource.data.trainingJobsThisMonth >= resource.data.trainingJobsThisMonth
+          && request.resource.data.trainingJobsThisMonth <= resource.data.trainingJobsThisMonth + 1
+          && request.resource.data.compilesToday <= compileDailyLimit(userId)
+          && (compileMonthlyLimit(userId) < 0 || request.resource.data.compilesThisMonth <= compileMonthlyLimit(userId))
+          && request.resource.data.trainingJobsThisMonth <= trainingMonthlyLimit(userId);
+        allow delete: if false;
       }
     }
 
@@ -86,9 +178,12 @@ service cloud.firestore {
       match /ml_samples/{sampleId} {
         allow read, write: if isSignedIn()
           && isOwner(get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId);
-        allow create: if isSignedIn()
-          && isOwner(get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId);
-        allow delete: if isSignedIn()
+      }
+
+      // ── ML Datasets (subcollection) ──────────────────────
+      // Project owner can CRUD their own dataset snapshots.
+      match /ml_datasets/{datasetId} {
+        allow read, write: if isSignedIn()
           && isOwner(get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId);
       }
 
@@ -99,9 +194,18 @@ service cloud.firestore {
         allow read: if isSignedIn()
           && isOwner(get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId);
         allow create: if isSignedIn()
-          && isOwner(get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId);
+          && isOwner(get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId)
+          // Enforce per-plan training quota at the database gate
+          // (client checks are advisory; this is authoritative).
+          && request.resource.data.get('type', '') == 'training'
+          && usageTrainingMonth(request.auth.uid) < trainingMonthlyLimit(request.auth.uid);
         allow update: if false; // Only backend service updates
-        allow delete: if false;
+        // Owners may remove finished training runs from the registry (version control).
+        // Progress/status updates still come only from the Admin SDK trainer service.
+        allow delete: if isSignedIn()
+          && isOwner(get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId)
+          && resource.data.get('type', '') == 'training'
+          && resource.data.get('status', '') == 'completed';
       }
     }
 
@@ -116,7 +220,10 @@ service cloud.firestore {
         && request.resource.data.userId == request.auth.uid
         && isValidString(request.resource.data.board, 64)
         && isValidString(request.resource.data.projectId, 128)
-        && request.resource.data.status == 'queued'; // must start as 'queued'
+        && request.resource.data.status == 'queued' // must start as 'queued'
+        // Authoritative compile quota checks:
+        && usageCompilesToday(request.auth.uid) < compileDailyLimit(request.auth.uid)
+        && (compileMonthlyLimit(request.auth.uid) < 0 || usageCompilesMonth(request.auth.uid) < compileMonthlyLimit(request.auth.uid));
 
       // Client cannot update job status (prevents faking a successful compilation)
       allow update: if false;
@@ -133,6 +240,7 @@ service cloud.firestore {
         && request.resource.data.authorId == request.auth.uid
         && isValidString(request.resource.data.name, 128)
         && isValidString(request.resource.data.description, 2000)
+        && isValidString(request.resource.data.blocksXml, 200000)
         && request.resource.data.downloads is int
         && request.resource.data.downloads == 0 // cannot inflate download count
         && request.resource.data.verified == false; // cannot self-verify
@@ -144,9 +252,27 @@ service cloud.firestore {
         // Allow any signed-in user to increment downloads only
         || (isSignedIn()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['downloads'])
-          && request.resource.data.downloads == resource.data.downloads + 1);
+          && request.resource.data.downloads == resource.data.downloads + 1)
+        // Allow rating aggregate updates from signed-in users
+        || (isSignedIn()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rating', 'ratingSum', 'ratingCount'])
+          && request.resource.data.rating is number
+          && request.resource.data.ratingSum is number
+          && request.resource.data.ratingCount is int
+          && request.resource.data.ratingCount >= 0);
 
       allow delete: if isOwner(resource.data.authorId) || isAdmin();
+
+      // Per-user ratings on marketplace items
+      match /ratings/{ratingUserId} {
+        allow read: if true;
+        allow create, update: if isOwner(ratingUserId)
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.value is int
+          && request.resource.data.value >= 1
+          && request.resource.data.value <= 5;
+        allow delete: if isOwner(ratingUserId);
+      }
     }
 
     // ── User Custom Blocks ────────────────────────────────

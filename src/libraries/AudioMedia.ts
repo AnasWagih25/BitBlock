@@ -1,4 +1,5 @@
 import { compiler } from "../compiler/assembler";
+import { getBoardConfig } from "../boards/registry";
 
 export function defineAudioMediaBlocks(Blockly: any) {
   const generator = Blockly.javascriptGenerator || Blockly.JavaScript;
@@ -17,10 +18,17 @@ export function defineAudioMediaBlocks(Blockly: any) {
     generator.forBlock["dfplayer_init"] = function (block: any) {
       const rx = block.getFieldValue("RX");
       const tx = block.getFieldValue("TX");
-      compiler.addInclude("#include <SoftwareSerial.h>");
+      // @ts-ignore
+      const bd = getBoardConfig(compiler.boardId);
       compiler.addInclude("#include <DFRobotDFPlayerMini.h>");
-      compiler.addGlobal(`SoftwareSerial mySoftwareSerial(${rx}, ${tx});\nDFRobotDFPlayerMini myDFPlayer;`);
-      compiler.addSetup(`mySoftwareSerial.begin(9600);`);
+      if (bd.platform === "esp32") {
+        compiler.addGlobal(`HardwareSerial mySoftwareSerial(1);\nDFRobotDFPlayerMini myDFPlayer;`);
+        compiler.addSetup(`mySoftwareSerial.begin(9600, SERIAL_8N1, ${rx}, ${tx});`);
+      } else {
+        compiler.addInclude("#include <SoftwareSerial.h>");
+        compiler.addGlobal(`SoftwareSerial mySoftwareSerial(${rx}, ${tx});\nDFRobotDFPlayerMini myDFPlayer;`);
+        compiler.addSetup(`mySoftwareSerial.begin(9600);`);
+      }
       compiler.addSetup(`if (!myDFPlayer.begin(mySoftwareSerial)) { Serial.println("DFPlayer error"); }`);
       compiler.addSetup(`myDFPlayer.volume(15);`);
       return "";
@@ -102,6 +110,11 @@ export function defineAudioMediaBlocks(Blockly: any) {
       const ws = block.getFieldValue("WS");
       const sd = block.getFieldValue("SD");
       const sck = block.getFieldValue("SCK");
+      // @ts-ignore
+      const bd = getBoardConfig(compiler.boardId);
+      if (bd.platform !== "esp32") {
+        return `Serial.println("I2S mic blocks are supported on ESP32 only");\n`;
+      }
       compiler.addInclude("#include <driver/i2s.h>");
       compiler.addGlobal(`const i2s_port_t I2S_PORT = I2S_NUM_0;`);
       compiler.addSetup(`i2s_config_t i2s_config = {
@@ -125,6 +138,14 @@ export function defineAudioMediaBlocks(Blockly: any) {
       };
       i2s_driver_install(I2S_PORT, &i2s_config, 0, NULL);
       i2s_set_pin(I2S_PORT, &pin_config);`);
+      compiler.addGlobal(`
+int32_t readI2SSample() {
+  int32_t sample = 0;
+  size_t bytesRead = 0;
+  esp_err_t res = i2s_read(I2S_PORT, &sample, sizeof(int32_t), &bytesRead, portMAX_DELAY);
+  if (res == ESP_OK && bytesRead == sizeof(int32_t)) return (sample >> 14);
+  return 0;
+}`);
       return "";
     };
   }
@@ -138,8 +159,7 @@ export function defineAudioMediaBlocks(Blockly: any) {
   };
   if (generator) {
     generator.forBlock["i2s_mic_read"] = function () {
-      compiler.addGlobal("int32_t i2s_sample = 0;");
-      return ["(i2s_read(I2S_PORT, &i2s_sample, sizeof(int32_t), NULL, portMAX_DELAY) == ESP_OK ? (i2s_sample >> 14) : 0)", 0];
+      return ["readI2SSample()", 0];
     };
   }
 
