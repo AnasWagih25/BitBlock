@@ -323,6 +323,23 @@ export function getCoreToolboxBlocks() {
   return [
     {
       kind: "category",
+      name: "Logic & Control",
+      colour: "#5C81A6",
+      contents: [
+        // Built-in Blockly control blocks (supports if / else if / else via mutator)
+        { kind: "block", type: "controls_if" },
+        // Comparison operators: =, !=, <, <=, >, >=
+        { kind: "block", type: "logic_compare" },
+        // Logical operators: and / or
+        { kind: "block", type: "logic_operation" },
+        // Unary not operator
+        { kind: "block", type: "logic_negate" },
+        // True / false constants
+        { kind: "block", type: "logic_boolean" },
+      ],
+    },
+    {
+      kind: "category",
       name: "Events & Arrays",
       colour: "#9D27DE",
       contents: [

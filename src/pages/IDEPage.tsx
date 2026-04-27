@@ -347,6 +347,10 @@ export default function IDEPage() {
             { kind: "block", type: "controls_for" },
             { kind: "block", type: "controls_forEach" },
             { kind: "block", type: "controls_repeat_ext" },
+            { kind: "block", type: "logic_compare" },
+            { kind: "block", type: "logic_operation" },
+            { kind: "block", type: "logic_negate" },
+            { kind: "block", type: "logic_boolean" },
           ],
         },
         {
