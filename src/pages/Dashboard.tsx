@@ -22,7 +22,7 @@ interface Project {
 import { BOARDS } from "../boards/registry";
 
 export default function Dashboard() {
-  const { user, signOut, isAdmin } = useAuth();
+  const { user, signOut, isAdmin, isBetaMode } = useAuth();
   const { confirm } = useAppDialog();
   const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -135,7 +135,7 @@ export default function Dashboard() {
             {[
               { label: "Projects", to: "/dashboard" },
               { label: "Marketplace", to: "/marketplace" },
-              { label: "Pricing", to: "/pricing" },
+              ...(!isBetaMode ? [{ label: "Pricing", to: "/pricing" }] : []),
             ].map((item) => (
               <Link key={item.label} to={item.to} className="btn-ghost" style={{
                 color: item.to === "/dashboard" ? "#9D27DE" : undefined,

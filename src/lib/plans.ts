@@ -153,3 +153,39 @@ export function getSuggestedUpgradePlan(current: PlanId): PlanId | null {
   if (current === "maker") return "pro";
   return null; // never suggest team via upsell banner
 }
+
+// ── Beta Mode Plan (doubled free-tier limits) ──────────────
+export const BETA_PLAN: PlanConfig = {
+  id: 'free',
+  name: 'Beta Tester',
+  price: 0,
+  priceLabel: 'Free (Beta)',
+  color: '#F59E0B',
+  icon: '🧪',
+  compilesPerDay: 6,
+  compilesPerMonth: 40,
+  trainingJobsPerMonth: 4,
+  maxJobTimeSeconds: 120,
+  datasetStorageBytes: 30 * MB,
+  modelStorageBytes: 30 * MB,
+  deployedModels: 1,
+  features: [
+    '6 compiles/day',
+    '40 compiles/month',
+    '4 training jobs/month',
+    '2 min max job time',
+    '30MB dataset storage',
+    '30MB model storage',
+    '1 deployed model',
+  ],
+};
+
+/**
+ * Returns the effective plan config. When beta mode is active,
+ * free-tier users get the doubled BETA_PLAN limits instead.
+ */
+export function getBetaPlanConfig(planId: string | undefined | null, isBeta: boolean): PlanConfig {
+  const id = (planId || 'free') as PlanId;
+  if (isBeta && id === 'free') return BETA_PLAN;
+  return PLANS[id] || PLANS.free;
+}

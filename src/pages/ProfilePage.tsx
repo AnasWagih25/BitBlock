@@ -11,9 +11,9 @@ import { PLANS, PLAN_ORDER, getSuggestedUpgradePlan } from "../lib/plans";
 import { Edit2, Crown, Wrench, FolderOpen, Puzzle, Camera, Zap, Shield, Globe, ExternalLink, ArrowUpRight } from "lucide-react";
 
 export default function ProfilePage() {
-  const { user, signOut, updateUserProfile, userPlan, isAdmin } = useAuth();
+  const { user, signOut, updateUserProfile, userPlan, isAdmin, isBetaMode } = useAuth();
   const { alert } = useAppDialog();
-  const { usage, plan } = useUsage(user?.uid, userPlan);
+  const { usage, plan } = useUsage(user?.uid, userPlan, isBetaMode);
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [displayName, setDisplayName] = useState("");
@@ -68,11 +68,11 @@ export default function ProfilePage() {
 
   const lastChanged = profile?.nameLastChangedAt?.toDate?.() || profile?.nameLastChangedAt;
   const daysSinceChange = lastChanged ? (Date.now() - new Date(lastChanged).getTime()) / (1000 * 60 * 60 * 24) : null;
-  const canChangeName = daysSinceChange === null || daysSinceChange >= 30;
+  const canChangeName = isAdmin || daysSinceChange === null || daysSinceChange >= 30;
   const daysLeft = daysSinceChange !== null ? Math.ceil(30 - daysSinceChange) : 0;
 
   const saveProfile = async () => {
-    if (!user || !canChangeName) return;
+    if (!user || (!isAdmin && !canChangeName)) return;
     setSaving(true);
     try {
       await updateUserProfile({ displayName });
@@ -137,7 +137,7 @@ export default function ProfilePage() {
             <span style={{ fontFamily: "Superstar, fantasy", fontSize: 28, color: "#9D27DE" }}>BIT<span style={{ color: "#F2F2F0" }}>BLOCK</span></span>
           </Link>
           <div style={{ display: "flex", gap: 4 }}>
-            {[{ label: "Projects", to: "/dashboard" }, { label: "Marketplace", to: "/marketplace" }, { label: "Pricing", to: "/pricing" }].map((item) => (
+            {[{ label: "Projects", to: "/dashboard" }, { label: "Marketplace", to: "/marketplace" }, ...(!isBetaMode ? [{ label: "Pricing", to: "/pricing" }] : [])].map((item) => (
               <Link key={item.label} to={item.to} className="btn-ghost">{item.label}</Link>
             ))}
             {isAdmin && <Link to="/admin" className="btn-ghost" style={{ color: "#F59E0B", display: "flex", alignItems: "center", gap: 4 }}><Shield size={14} /> Admin</Link>}
@@ -250,20 +250,29 @@ export default function ProfilePage() {
                   {plan.compilesPerDay} compiles/day · {plan.trainingJobsPerMonth} jobs/mo · {plan.maxJobTimeSeconds >= 60 ? `${Math.floor(plan.maxJobTimeSeconds / 60)} min` : `${plan.maxJobTimeSeconds}s`} max
                 </div>
 
-                {suggestedPlan && (
-                  <div style={{ padding: "12px 14px", borderRadius: 10, background: "rgba(157,39,222,0.08)", border: "1px solid rgba(157,39,222,0.15)", marginBottom: 16, fontSize: 12, color: "rgba(242,242,240,0.65)", lineHeight: 1.6 }}>
-                    ⚡ Upgrade to <strong style={{ color: suggestedPlan.color }}>{suggestedPlan.name}</strong> for {suggestedPlan.compilesPerDay} compiles/day and {suggestedPlan.trainingJobsPerMonth} training jobs/month.
-                  </div>
+                {isBetaMode ? (
+                  <>
+                    <div style={{ padding: "12px 14px", borderRadius: 10, background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)", fontSize: 12, color: "rgba(242,242,240,0.65)", lineHeight: 1.6 }}>
+                      🧪 You're on the <strong style={{ color: "#F59E0B" }}>Beta Tester</strong> plan with doubled free-tier limits. Enjoy!
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {suggestedPlan && (
+                      <div style={{ padding: "12px 14px", borderRadius: 10, background: "rgba(157,39,222,0.08)", border: "1px solid rgba(157,39,222,0.15)", marginBottom: 16, fontSize: 12, color: "rgba(242,242,240,0.65)", lineHeight: 1.6 }}>
+                        ⚡ Upgrade to <strong style={{ color: suggestedPlan.color }}>{suggestedPlan.name}</strong> for {suggestedPlan.compilesPerDay} compiles/day and {suggestedPlan.trainingJobsPerMonth} training jobs/month.
+                      </div>
+                    )}
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <Link to="/billing" className="btn-primary" style={{ fontSize: 12, padding: "8px 16px", flex: 1, justifyContent: "center" }}>
+                        Manage Billing <ArrowUpRight size={12} />
+                      </Link>
+                      <Link to="/pricing" className="btn-secondary" style={{ fontSize: 12, padding: "8px 16px", flex: 1, justifyContent: "center" }}>
+                        Compare Plans
+                      </Link>
+                    </div>
+                  </>
                 )}
-
-                <div style={{ display: "flex", gap: 8 }}>
-                  <Link to="/billing" className="btn-primary" style={{ fontSize: 12, padding: "8px 16px", flex: 1, justifyContent: "center" }}>
-                    Manage Billing <ArrowUpRight size={12} />
-                  </Link>
-                  <Link to="/pricing" className="btn-secondary" style={{ fontSize: 12, padding: "8px 16px", flex: 1, justifyContent: "center" }}>
-                    Compare Plans
-                  </Link>
-                </div>
               </div>
 
               {/* Usage Card */}
@@ -281,7 +290,8 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            {/* ── Plan Tier Strip ── */}
+            {/* ── Plan Tier Strip (hidden in beta) ── */}
+            {!isBetaMode && (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 24 }}>
               {PLAN_ORDER.map((pid) => {
                 const p = PLANS[pid];
@@ -302,6 +312,7 @@ export default function ProfilePage() {
                 );
               })}
             </div>
+            )}
 
             {/* ── Profile Settings ── */}
             <div style={{ borderRadius: 16, padding: "28px", border: "1px solid rgba(157,39,222,0.12)", background: "linear-gradient(170deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01))" }}>
@@ -321,7 +332,7 @@ export default function ProfilePage() {
                     {saving ? "Saving..." : "Save"}
                   </button>
                 </div>
-                {!canChangeName && <p style={{ fontSize: 12, color: "#f87171", marginTop: 8 }}>* You can change your name again in {daysLeft} day{daysLeft !== 1 ? "s" : ""}.</p>}
+                {!canChangeName && !isAdmin && <p style={{ fontSize: 12, color: "#f87171", marginTop: 8 }}>* You can change your name again in {daysLeft} day{daysLeft !== 1 ? "s" : ""}.</p>}
               </div>
 
               <div style={{ height: 1, background: "linear-gradient(90deg, transparent, rgba(157,39,222,0.15), transparent)", margin: "0 0 20px" }} />

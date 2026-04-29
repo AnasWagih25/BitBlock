@@ -43,9 +43,9 @@ async function sha256Hex(input: string) {
 
 export default function IDEPage() {
   const { projectId } = useParams();
-  const { user, userPlan } = useAuth();
+  const { user, userPlan, isBetaMode } = useAuth();
   const { alert } = useAppDialog();
-  const { canCompile, compileBlockReason, canStartTraining, trainingBlockReason, incrementCompileCount, incrementTrainingCount } = useUsage(user?.uid, userPlan);
+  const { canCompile, compileBlockReason, canStartTraining, trainingBlockReason, incrementCompileCount, incrementTrainingCount } = useUsage(user?.uid, userPlan, isBetaMode);
   const navigate = useNavigate();
 
   const [project, setProject] = useState<any>(null);

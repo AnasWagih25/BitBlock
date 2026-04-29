@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { getPlanConfig } from '../lib/plans';
+import { getBetaPlanConfig } from '../lib/plans';
 import type { PlanId } from '../lib/plans';
 
 interface UsageData {
@@ -47,10 +47,10 @@ function normalizeUsage(raw: UsageData): UsageData {
   };
 }
 
-export function useUsage(uid: string | undefined, planId: PlanId | string | undefined) {
+export function useUsage(uid: string | undefined, planId: PlanId | string | undefined, isBetaMode: boolean = false) {
   const [usage, setUsage] = useState<UsageData>(emptyUsage);
   const [loading, setLoading] = useState(true);
-  const plan = getPlanConfig(planId);
+  const plan = getBetaPlanConfig(planId, isBetaMode);
 
   // Real-time listener on usage doc
   useEffect(() => {

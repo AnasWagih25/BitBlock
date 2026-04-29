@@ -11,8 +11,8 @@ export default function PlanLimitBanner({
   fullBleed?: boolean;
   squareTop?: boolean;
 }) {
-  const { user, userPlan } = useAuth();
-  const { canCompile, canStartTraining, compileBlockReason, trainingBlockReason } = useUsage(user?.uid, userPlan);
+  const { user, userPlan, isBetaMode } = useAuth();
+  const { canCompile, canStartTraining, compileBlockReason, trainingBlockReason } = useUsage(user?.uid, userPlan, isBetaMode);
 
   if (!user || (canCompile && canStartTraining)) return null;
   const current = (userPlan || "free") as keyof typeof PLANS;

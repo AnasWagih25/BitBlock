@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { PLANS, PLAN_ORDER, type PlanId, formatStorageSize } from "../lib/plans";
 import { useAuth } from "../contexts/AuthContext";
 import { useAppDialog } from "../contexts/DialogContext";
@@ -45,12 +45,18 @@ function UsageBar({ label, used, max, color, text, icon }: {
 
 /* ── Main Page ────────────────────────────────────────────── */
 export default function BillingPage() {
-  const { user, userPlan, signOut, isAdmin } = useAuth();
+  const { user, userPlan, signOut, isAdmin, isBetaMode } = useAuth();
   const { alert } = useAppDialog();
   const currentPlan = (userPlan || "free") as PlanId;
   const plan = PLANS[currentPlan];
-  const { usage } = useUsage(user?.uid, userPlan);
+  const { usage } = useUsage(user?.uid, userPlan, isBetaMode);
   const [cancelling, setCancelling] = useState(false);
+  const navigate = useNavigate();
+
+  // In beta mode, redirect to dashboard
+  useEffect(() => {
+    if (isBetaMode) navigate("/dashboard", { replace: true });
+  }, [isBetaMode, navigate]);
 
   const currentIdx = PLAN_ORDER.indexOf(currentPlan);
 

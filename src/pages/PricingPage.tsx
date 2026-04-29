@@ -4,7 +4,8 @@ import { PLAN_ORDER, PLANS, formatJobTime, formatStorageSize, type PlanId } from
 import { useAuth } from "../contexts/AuthContext";
 import { useAppDialog } from "../contexts/DialogContext";
 import { auth } from "../lib/firebase";
-import { Check, ChevronDown, Zap, Shield, Cpu, BarChart3, HardDrive, Rocket } from "lucide-react";
+import { Check, ChevronDown, Zap, Shield, Cpu, BarChart3, HardDrive, Rocket, FlaskConical } from "lucide-react";
+import { BETA_PLAN } from "../lib/plans";
 
 /* ── FAQ Data ─────────────────────────────────────────────── */
 const faqs = [
@@ -67,7 +68,7 @@ function FaqItem({ q, a }: { q: string; a: string }) {
 
 /* ── Main Page ────────────────────────────────────────────── */
 export default function PricingPage() {
-  const { user, userPlan, signOut, isAdmin } = useAuth();
+  const { user, userPlan, signOut, isAdmin, isBetaMode } = useAuth();
   const { alert } = useAppDialog();
   const navigate = useNavigate();
   const [annual, setAnnual] = useState(false);
@@ -255,6 +256,110 @@ export default function PricingPage() {
       </div>
     );
   };
+
+  /* ── Beta Mode Full Page ─────────────────────────────── */
+  if (isBetaMode) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#0A0A0A", fontFamily: "Space Grotesk, sans-serif" }}>
+        {/* Nav */}
+        <nav className="glass-dark" style={{ position: "sticky", top: 0, zIndex: 100, padding: "0 40px", height: 64, display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid rgba(157,39,222,0.15)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 32 }}>
+            <Link to={user ? "/dashboard" : "/"} style={{ textDecoration: "none" }}>
+              <span style={{ fontFamily: "Superstar, fantasy", fontSize: 28, color: "#9D27DE" }}>BIT<span style={{ color: "#F2F2F0" }}>BLOCK</span></span>
+            </Link>
+            <div style={{ display: "flex", gap: 4 }}>
+              {user && <Link to="/dashboard" className="btn-ghost">Projects</Link>}
+              {user && <Link to="/marketplace" className="btn-ghost">Marketplace</Link>}
+              {isAdmin && <Link to="/admin" className="btn-ghost" style={{ color: "#F59E0B" }}>Admin</Link>}
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            {user ? (
+              <>
+                <Link to="/profile" className="btn-ghost">Profile</Link>
+                <button onClick={() => signOut()} className="btn-ghost" style={{ fontSize: 12 }}>Sign Out</button>
+              </>
+            ) : (
+              <>
+                <Link to="/login" className="btn-ghost">Log In</Link>
+                <Link to="/signup" className="btn-primary" style={{ padding: "9px 22px", fontSize: 13 }}>Join the Beta</Link>
+              </>
+            )}
+          </div>
+        </nav>
+
+        {/* Hero */}
+        <section className="grid-bg" style={{ position: "relative", overflow: "hidden", textAlign: "center", padding: "120px 40px 80px" }}>
+          <div style={{ position: "absolute", top: "-10%", left: "20%", width: 500, height: 500, borderRadius: "50%", background: "radial-gradient(circle, rgba(245,158,11,0.15) 0%, transparent 70%)", filter: "blur(60px)", pointerEvents: "none" }} />
+          <div style={{ position: "absolute", bottom: "0%", right: "10%", width: 350, height: 350, borderRadius: "50%", background: "radial-gradient(circle, rgba(157,39,222,0.12) 0%, transparent 70%)", filter: "blur(50px)", pointerEvents: "none" }} />
+
+          <div style={{ position: "relative", zIndex: 1, maxWidth: 700, margin: "0 auto" }}>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 20px", borderRadius: 999, background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.3)", color: "#F59E0B", fontSize: 13, fontWeight: 700, marginBottom: 28, letterSpacing: "0.04em" }}>
+              <FlaskConical size={16} /> Beta Testing Program
+            </div>
+            <h1 style={{ fontFamily: "Superstar, fantasy", fontSize: "clamp(32px, 5vw, 56px)", lineHeight: 1.1, letterSpacing: "0.05em", color: "#F2F2F0", marginBottom: 24 }}>
+              WELCOME TO THE<br />
+              <span className="gradient-text">BETA</span>
+            </h1>
+            <p style={{ fontSize: 18, color: "rgba(242,242,240,0.6)", lineHeight: 1.8, maxWidth: 560, margin: "0 auto 48px" }}>
+              You're part of our exclusive beta testing program! Everyone gets a generous free quota to fully test and review our platform. No payments, no subscriptions — just build.
+            </p>
+
+            {/* Beta Plan Card */}
+            <div style={{ maxWidth: 420, margin: "0 auto", borderRadius: 24, border: "1.5px solid rgba(245,158,11,0.4)", background: "linear-gradient(170deg, rgba(245,158,11,0.12) 0%, rgba(16,4,24,0.95) 50%)", boxShadow: "0 24px 60px rgba(245,158,11,0.15)", padding: "36px 32px", position: "relative", overflow: "hidden", textAlign: "left" }}>
+              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "linear-gradient(90deg, #F59E0B, #D97706, #F59E0B)" }} />
+              <div style={{ position: "absolute", width: 200, height: 200, right: -80, top: -80, borderRadius: "50%", background: "radial-gradient(circle, rgba(245,158,11,0.2), transparent 70%)", pointerEvents: "none" }} />
+
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+                <div style={{ width: 48, height: 48, borderRadius: 14, background: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.3)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <FlaskConical size={24} color="#F59E0B" />
+                </div>
+                <div>
+                  <h2 style={{ margin: 0, color: "#F2F2F0", fontSize: 22, fontWeight: 700 }}>Beta Tester</h2>
+                  <span style={{ fontSize: 12, color: "rgba(242,242,240,0.4)" }}>Free during beta</span>
+                </div>
+              </div>
+
+              <div style={{ height: 1, background: "linear-gradient(90deg, transparent, rgba(245,158,11,0.2), transparent)", marginBottom: 20 }} />
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {BETA_PLAN.features.map((feature) => (
+                  <div key={feature} style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 14, color: "rgba(242,242,240,0.78)" }}>
+                    <div style={{ width: 20, height: 20, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.25)" }}>
+                      <Check size={12} color="#F59E0B" strokeWidth={3} />
+                    </div>
+                    <span>{feature}</span>
+                  </div>
+                ))}
+              </div>
+
+              {!user && (
+                <Link to="/signup" className="btn-primary" style={{ width: "100%", justifyContent: "center", marginTop: 28, padding: "14px 24px", fontSize: 15, background: "linear-gradient(135deg, #F59E0B, #D97706)", boxShadow: "0 8px 30px rgba(245,158,11,0.3)" }}>
+                  Join the Beta →
+                </Link>
+              )}
+              {user && (
+                <Link to="/dashboard" className="btn-primary" style={{ width: "100%", justifyContent: "center", marginTop: 28, padding: "14px 24px", fontSize: 15, background: "linear-gradient(135deg, #F59E0B, #D97706)", boxShadow: "0 8px 30px rgba(245,158,11,0.3)" }}>
+                  Go to Projects →
+                </Link>
+              )}
+            </div>
+
+            <p style={{ fontSize: 13, color: "rgba(242,242,240,0.35)", marginTop: 32, lineHeight: 1.6 }}>
+              Pricing and subscription plans will be available after the beta period ends.<br />
+              Your beta quotas are double the standard free-tier limits.
+            </p>
+          </div>
+        </section>
+
+        {/* Footer */}
+        <footer style={{ padding: "32px 40px", borderTop: "1px solid rgba(157,39,222,0.1)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
+          <span style={{ fontFamily: "Superstar, fantasy", fontSize: 16, color: "#9D27DE" }}>BITBLOCK</span>
+          <span style={{ fontSize: 12, color: "rgba(242,242,240,0.25)" }}>© 2026 BitBlock. All rights reserved.</span>
+        </footer>
+      </div>
+    );
+  }
 
   return (
     <div style={{ minHeight: "100vh", background: "#0A0A0A", fontFamily: "Space Grotesk, sans-serif" }}>

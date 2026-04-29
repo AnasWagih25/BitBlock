@@ -284,6 +284,14 @@ service cloud.firestore {
       allow delete: if isSignedIn() && isOwner(resource.data.ownerId);
     }
 
+    // ── Platform Config ──────────────────────────────────
+    // All authenticated users can read (needed for beta mode flag).
+    // Only admins can write/update platform configuration.
+    match /config/{configId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // ── Deny all other paths ─────────────────────────────
     match /{document=**} {
       allow read, write: if false;

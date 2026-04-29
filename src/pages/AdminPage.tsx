@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { collection, getDocs, doc, updateDoc, serverTimestamp, getDoc } from "firebase/firestore";
+import { collection, getDocs, doc, updateDoc, serverTimestamp, getDoc, setDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { PLANS, PLAN_ORDER, getPlanConfig, formatStorageSize, formatJobTime } from "../lib/plans";
 import type { PlanId } from "../lib/plans";
-import { Crown, Users, Zap, Shield, Search, ChevronDown, X, BarChart3, CreditCard, Activity, Calendar, Clock, Database, Server } from "lucide-react";
+import { Crown, Users, Zap, Shield, Search, ChevronDown, X, BarChart3, CreditCard, Activity, Calendar, Clock, Database, Server, FlaskConical } from "lucide-react";
 
 interface UserRow {
   uid: string; email: string; displayName: string; photoURL?: string;
@@ -15,13 +15,14 @@ interface UserRow {
 }
 
 export default function AdminPage() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, isBetaMode } = useAuth();
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [planFilter, setPlanFilter] = useState<string>("all");
   const [selectedUser, setSelectedUser] = useState<UserRow | null>(null);
   const [updating, setUpdating] = useState("");
+  const [togglingBeta, setTogglingBeta] = useState(false);
 
   useEffect(() => { fetchUsers(); }, []);
 
@@ -187,6 +188,80 @@ export default function AdminPage() {
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Beta Mode Toggle Card */}
+        <div style={{
+          marginBottom: 40, borderRadius: 20, overflow: "hidden",
+          border: isBetaMode ? "1.5px solid rgba(245,158,11,0.5)" : "1px solid rgba(255,255,255,0.08)",
+          background: isBetaMode
+            ? "linear-gradient(135deg, rgba(245,158,11,0.08) 0%, rgba(16,4,24,0.95) 100%)"
+            : "linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(16,4,24,0.95) 100%)",
+          boxShadow: isBetaMode ? "0 16px 40px rgba(245,158,11,0.1)" : "none",
+          transition: "all 0.4s ease",
+        }}>
+          <div style={{ padding: "28px 32px", display: "flex", alignItems: "center", gap: 20 }}>
+            <div style={{
+              width: 56, height: 56, borderRadius: 16, flexShrink: 0,
+              background: isBetaMode ? "rgba(245,158,11,0.15)" : "rgba(255,255,255,0.05)",
+              border: `1px solid ${isBetaMode ? "rgba(245,158,11,0.3)" : "rgba(255,255,255,0.1)"}`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              transition: "all 0.3s ease",
+            }}>
+              <FlaskConical size={26} color={isBetaMode ? "#F59E0B" : "rgba(242,242,240,0.4)"} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+                <h2 style={{ fontSize: 18, fontWeight: 800, color: "#F2F2F0", margin: 0 }}>Beta Mode</h2>
+                <span style={{
+                  fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em",
+                  padding: "3px 10px", borderRadius: 999,
+                  background: isBetaMode ? "rgba(34,197,94,0.15)" : "rgba(239,68,68,0.1)",
+                  color: isBetaMode ? "#4ade80" : "#f87171",
+                  border: `1px solid ${isBetaMode ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.2)"}`,
+                }}>
+                  {isBetaMode ? "Active" : "Inactive"}
+                </span>
+              </div>
+              <p style={{ fontSize: 13, color: "rgba(242,242,240,0.5)", margin: 0, lineHeight: 1.5 }}>
+                {isBetaMode
+                  ? "All pricing, billing, and subscription features are suppressed. Users get doubled free-tier limits."
+                  : "Enable to suppress all pricing/subscription UI and give everyone doubled free-tier quotas for beta testing."}
+              </p>
+            </div>
+            <button
+              onClick={async () => {
+                setTogglingBeta(true);
+                try {
+                  await setDoc(doc(db, "config", "platform"), { betaMode: !isBetaMode }, { merge: true });
+                } catch (e) { console.error(e); }
+                setTogglingBeta(false);
+              }}
+              disabled={togglingBeta}
+              style={{
+                padding: "12px 28px", fontSize: 14, fontWeight: 700, borderRadius: 12,
+                cursor: togglingBeta ? "wait" : "pointer",
+                border: "none",
+                background: isBetaMode
+                  ? "linear-gradient(135deg, rgba(239,68,68,0.2), rgba(239,68,68,0.1))"
+                  : "linear-gradient(135deg, rgba(245,158,11,0.25), rgba(245,158,11,0.1))",
+                color: isBetaMode ? "#f87171" : "#F59E0B",
+                transition: "all 0.2s ease",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.02)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; }}
+            >
+              {togglingBeta ? "Updating..." : isBetaMode ? "Disable Beta" : "Enable Beta"}
+            </button>
+          </div>
+          {isBetaMode && (
+            <div style={{ padding: "12px 32px 16px", borderTop: "1px solid rgba(245,158,11,0.15)", display: "flex", gap: 24, fontSize: 12, color: "rgba(242,242,240,0.45)" }}>
+              <span>• Pricing page shows beta notice</span>
+              <span>• Billing page redirects away</span>
+              <span>• Compile limit: 6/day, 40/mo</span>
+              <span>• Training: 4 jobs/mo, 2 min max</span>
+            </div>
+          )}
         </div>
 
         {/* Plan Overview Cards */}

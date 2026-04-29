@@ -9,7 +9,7 @@ import {
   updateProfile,
   sendPasswordResetEmail,
 } from "firebase/auth";
-import { doc, setDoc, getDoc, getDocFromServer, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, getDoc, getDocFromServer, serverTimestamp, onSnapshot } from "firebase/firestore";
 import { auth, db, googleProvider } from "../lib/firebase";
 import type { PlanId } from "../lib/plans";
 
@@ -19,6 +19,7 @@ interface AuthContextType {
   userPlan: PlanId;
   userRole: string;
   isAdmin: boolean;
+  isBetaMode: boolean;
   signUp: (email: string, password: string, displayName: string, planId?: PlanId) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signInWithGoogle: (planId?: PlanId) => Promise<void>;
@@ -35,9 +36,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [userPlan, setUserPlan] = useState<PlanId>('free');
   const [userRole, setUserRole] = useState<string>('user');
+  const [isBetaMode, setIsBetaMode] = useState(false);
   const authReadSeq = useRef(0);
 
   const isAdmin = userRole === 'admin';
+
+  // Listen to global platform config for beta mode
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, "config", "platform"), (snap) => {
+      if (snap.exists()) {
+        setIsBetaMode(snap.data().betaMode === true);
+      }
+    }, () => { /* ignore errors for non-existent doc */ });
+    return () => unsub();
+  }, []);
 
   const fetchUserMeta = async (uid: string) => {
     try {
@@ -148,7 +160,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, userPlan, userRole, isAdmin, signUp, signIn, signInWithGoogle, signOut, resetPassword, updateUserProfile, refreshUserMeta }}>
+    <AuthContext.Provider value={{ user, loading, userPlan, userRole, isAdmin, isBetaMode, signUp, signIn, signInWithGoogle, signOut, resetPassword, updateUserProfile, refreshUserMeta }}>
       {children}
     </AuthContext.Provider>
   );
