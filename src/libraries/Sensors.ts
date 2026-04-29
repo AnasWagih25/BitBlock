@@ -1,4 +1,5 @@
 import { compiler } from "../compiler/assembler";
+import { getBoardConfig } from "../boards/registry";
 
 export function defineSensorBlocks(Blockly: any) {
   const generator = Blockly.JavaScript || Blockly.javascriptGenerator;
@@ -330,26 +331,16 @@ float hcsr04_read_cm_val(int trig, int echo) {
       compiler.addInclude(`#include <Wire.h>\n#include <Adafruit_MPU6050.h>\n#include <Adafruit_Sensor.h>`);
       compiler.addGlobal(`Adafruit_MPU6050 mpu;`);
       compiler.addSetup(`if (!mpu.begin()) { Serial.println("MPU6050 not found"); }`);
-      compiler.addGlobal(`
-float readMPUDirect(String t) {
-  sensors_event_t a, g, temp;
-  mpu.getEvent(&a, &g, &temp);
-  if(t=="ax") return a.acceleration.x;
-  if(t=="ay") return a.acceleration.y;
-  if(t=="az") return a.acceleration.z;
-  if(t=="gx") return g.gyro.x;
-  if(t=="gy") return g.gyro.y;
-  if(t=="gz") return g.gyro.z;
-  return 0;
-}`);
+      compiler.addGlobal(`sensors_event_t _mpu_a, _mpu_g, _mpu_t;\nbool _mpu_fresh = false;\nunsigned long _mpu_last = 0;`);
+      compiler.addGlobal(`\nvoid _mpuUpdate() {\n  if (millis() - _mpu_last < 10) return;\n  mpu.getEvent(&_mpu_a, &_mpu_g, &_mpu_t);\n  _mpu_fresh = true;\n  _mpu_last = millis();\n}`);
       return "";
     };
-    generator.forBlock["mpu6050_read_acc_x"] = function() { return [`readMPUDirect("ax")`, generator.ORDER_FUNCTION_CALL]; };
-    generator.forBlock["mpu6050_read_acc_y"] = function() { return [`readMPUDirect("ay")`, generator.ORDER_FUNCTION_CALL]; };
-    generator.forBlock["mpu6050_read_acc_z"] = function() { return [`readMPUDirect("az")`, generator.ORDER_FUNCTION_CALL]; };
-    generator.forBlock["mpu6050_read_gyro_x"] = function() { return [`readMPUDirect("gx")`, generator.ORDER_FUNCTION_CALL]; };
-    generator.forBlock["mpu6050_read_gyro_y"] = function() { return [`readMPUDirect("gy")`, generator.ORDER_FUNCTION_CALL]; };
-    generator.forBlock["mpu6050_read_gyro_z"] = function() { return [`readMPUDirect("gz")`, generator.ORDER_FUNCTION_CALL]; };
+    generator.forBlock["mpu6050_read_acc_x"] = function() { return [`(_mpuUpdate(), _mpu_a.acceleration.x)`, generator.ORDER_FUNCTION_CALL]; };
+    generator.forBlock["mpu6050_read_acc_y"] = function() { return [`(_mpuUpdate(), _mpu_a.acceleration.y)`, generator.ORDER_FUNCTION_CALL]; };
+    generator.forBlock["mpu6050_read_acc_z"] = function() { return [`(_mpuUpdate(), _mpu_a.acceleration.z)`, generator.ORDER_FUNCTION_CALL]; };
+    generator.forBlock["mpu6050_read_gyro_x"] = function() { return [`(_mpuUpdate(), _mpu_g.gyro.x)`, generator.ORDER_FUNCTION_CALL]; };
+    generator.forBlock["mpu6050_read_gyro_y"] = function() { return [`(_mpuUpdate(), _mpu_g.gyro.y)`, generator.ORDER_FUNCTION_CALL]; };
+    generator.forBlock["mpu6050_read_gyro_z"] = function() { return [`(_mpuUpdate(), _mpu_g.gyro.z)`, generator.ORDER_FUNCTION_CALL]; };
 
     // VL53L0X
     generator.forBlock["vl53l0x_tof_init"] = function() {
@@ -457,13 +448,57 @@ String readRFIDCard() {
 
     // NPK
     generator.forBlock["npk_init"] = function() {
-      return `// Init advanced NPK polling logic\n`;
+      // @ts-ignore
+      const bd = getBoardConfig(compiler.boardId);
+      if (bd.platform === "esp32") {
+        compiler.addGlobal(`HardwareSerial npkSerial(2);`);
+        compiler.addSetup(`npkSerial.begin(9600, SERIAL_8N1, 16, 17);`);
+      } else {
+        compiler.addInclude(`#include <SoftwareSerial.h>`);
+        compiler.addGlobal(`SoftwareSerial npkSerial(16, 17);`);
+        compiler.addSetup(`npkSerial.begin(9600);`);
+      }
+      compiler.addGlobal(`const int NPK_DE_PIN = 4;`);
+      compiler.addSetup(`pinMode(NPK_DE_PIN, OUTPUT);\ndigitalWrite(NPK_DE_PIN, LOW);`);
+      compiler.addGlobal(`
+uint16_t _npkCrc16(uint8_t* buf, int len) {
+  uint16_t crc = 0xFFFF;
+  for (int i = 0; i < len; i++) {
+    crc ^= buf[i];
+    for (int j = 0; j < 8; j++) {
+      if (crc & 1) crc = (crc >> 1) ^ 0xA001;
+      else crc >>= 1;
+    }
+  }
+  return crc;
+}
+int _npkReadRegister(uint8_t addr, uint16_t reg) {
+  uint8_t frame[8] = {addr, 0x03, (uint8_t)(reg >> 8), (uint8_t)(reg & 0xFF), 0x00, 0x01, 0, 0};
+  uint16_t crc = _npkCrc16(frame, 6);
+  frame[6] = crc & 0xFF;
+  frame[7] = (crc >> 8) & 0xFF;
+  digitalWrite(NPK_DE_PIN, HIGH);
+  delay(10);
+  npkSerial.write(frame, 8);
+  npkSerial.flush();
+  digitalWrite(NPK_DE_PIN, LOW);
+  delay(100);
+  uint8_t resp[7];
+  int idx = 0;
+  unsigned long t = millis();
+  while (millis() - t < 500 && idx < 7) {
+    if (npkSerial.available()) resp[idx++] = npkSerial.read();
+  }
+  if (idx >= 5) return (resp[3] << 8) | resp[4];
+  return -1;
+}`);
+      return "";
     };
     generator.forBlock["npk_read_nitrogen"] = function() {
-      return [`0`, generator.ORDER_FUNCTION_CALL]; // Placeholder for modbus struct read
+      return [`_npkReadRegister(0x01, 0x001E)`, generator.ORDER_FUNCTION_CALL];
     };
     generator.forBlock["npk_read_ph"] = function() {
-      return [`7.0`, generator.ORDER_FUNCTION_CALL]; 
+      return [`(_npkReadRegister(0x01, 0x0006) / 10.0f)`, generator.ORDER_FUNCTION_CALL];
     };
   }
 }

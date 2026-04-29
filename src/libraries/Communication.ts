@@ -141,7 +141,7 @@ export function defineCommunicationBlocks(Blockly: any) {
       return `WiFi.begin(${ssid}, ${pass});\nwhile (WiFi.status() != WL_CONNECTED) { delay(500); Serial.print("."); }\nSerial.println("\\nWiFi connected");\n`;
     };
     generator.forBlock["wifi_disconnect"] = function() { return `WiFi.disconnect();\n`; };
-    generator.forBlock["wifi_get_ip"] = function() { return [`String(WiFi.localIP())`, generator.ORDER_FUNCTION_CALL]; };
+    generator.forBlock["wifi_get_ip"] = function() { return [`WiFi.localIP().toString()`, generator.ORDER_FUNCTION_CALL]; };
     generator.forBlock["wifi_get_mac"] = function() { return [`WiFi.macAddress()`, generator.ORDER_FUNCTION_CALL]; };
     generator.forBlock["wifi_get_rssi"] = function() { return [`WiFi.RSSI()`, generator.ORDER_FUNCTION_CALL]; };
 
@@ -264,10 +264,24 @@ void mqttConnectBlock(String id) {
     generator.forBlock["ble_start_advertising"] = function() {
       return `if (pAdvertising) pAdvertising->start();\n`;
     };
-    // Basic hooks for others as placeholder (pure BLE server architecture is complex)
-    generator.forBlock["ble_create_service"] = function() { return `// Create BLE Service\n`; };
-    generator.forBlock["ble_create_characteristic"] = function() { return `// Create BLE Char\n`; };
-    generator.forBlock["ble_notify"] = function() { return `// BLE Notify\n`; };
+    generator.forBlock["ble_create_service"] = function(block: any, generator: any) {
+      let uuid = generator.valueToCode(block, 'UUID', generator.ORDER_ATOMIC) || '"180A"';
+      uuid = asCppString(uuid);
+      compiler.addGlobal(`BLEService* pBleService = nullptr;`);
+      return `pBleService = pServer->createService(${uuid});\npBleService->start();\n`;
+    };
+    generator.forBlock["ble_create_characteristic"] = function(block: any, generator: any) {
+      let uuid = generator.valueToCode(block, 'UUID', generator.ORDER_ATOMIC) || '"2A29"';
+      uuid = asCppString(uuid);
+      compiler.addGlobal(`BLECharacteristic* pBleChar = nullptr;`);
+      compiler.addInclude(`#include <BLE2902.h>`);
+      return `if (pBleService) {\n  pBleChar = pBleService->createCharacteristic(${uuid}, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_NOTIFY);\n  pBleChar->addDescriptor(new BLE2902());\n}\n`;
+    };
+    generator.forBlock["ble_notify"] = function(block: any, generator: any) {
+      let msg = generator.valueToCode(block, 'MSG', generator.ORDER_ATOMIC) || '""';
+      msg = asCppString(msg);
+      return `if (pBleChar) {\n  pBleChar->setValue(String(${msg}).c_str());\n  pBleChar->notify();\n}\n`;
+    };
 
     // Serial
     generator.forBlock["serial_init_baud"] = function(block: any, generator: any) {

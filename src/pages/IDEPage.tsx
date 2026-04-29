@@ -12,6 +12,8 @@ import { TASK_ARCHITECTURES, ML_ARCHITECTURES } from "../boards/MLCapabilities";
 import { compiler } from "../compiler/assembler";
 import { defineCoreBlocks, getCoreToolboxBlocks } from "../blocks/core";
 import { defineAllLibraryBlocks, getAllLibraryCategories } from "../libraries";
+import { MARKETPLACE_EXAMPLES } from "../blocks/marketplaceExamples";
+import QuickHelpPanel from "../components/QuickHelpPanel";
 import DataCollection from "../ml/DataCollection";
 import TrainingView from "../ml/TrainingView";
 import TestingView from "../ml/Testing";
@@ -87,6 +89,7 @@ export default function IDEPage() {
   const [exportDescription, setExportDescription] = useState("");
   const [exportCategory, setExportCategory] = useState("GPIO");
   const [compiledSourceHash, setCompiledSourceHash] = useState("");
+  const [showExamplesPanel, setShowExamplesPanel] = useState(false);
   const mlOnboardingShownRef = useRef(false);
   const showPlanBanner = !canCompile || !canStartTraining;
 
@@ -951,6 +954,30 @@ export default function IDEPage() {
 
   const appendLog = (msg: string) => setSerialLog(l => [...l, msg]);
 
+  const loadExample = async (example: typeof MARKETPLACE_EXAMPLES[0]) => {
+    if (!workspaceRef.current || !Blockly) return;
+    // Set the correct board for this example
+    if (project && example.boardId !== project.board) {
+      setProject((p: any) => ({ ...p, board: example.boardId }));
+      if (projectId) {
+        await updateDoc(doc(db, "projects", projectId), { board: example.boardId });
+      }
+    }
+    // Clear workspace and load the example blocks
+    workspaceRef.current.clear();
+    try {
+      const xml = Blockly.utils.xml.textToDom(example.blocksXml);
+      Blockly.Xml.domToWorkspace(xml, workspaceRef.current);
+      workspaceRef.current.scrollCenter();
+      setTimeout(() => generateCode(), 50);
+      setShowExamplesPanel(false);
+      appendLog(`[Examples] Loaded "${example.name}" (${example.category})`);
+    } catch (e: any) {
+      console.error("Failed to load example:", e);
+      await alert(`Failed to load example: ${e?.message}`);
+    }
+  };
+
   useEffect(() => {
     if (!serialAutoScroll || panelTab !== "serial") return;
     if (!serialScrollRef.current) return;
@@ -1444,14 +1471,16 @@ export default function IDEPage() {
           Export to Marketplace
         </button>
         <button
-          id="import-installed-marketplace-btn"
-          onClick={importInstalledMarketplaceItems}
-          disabled={importingInstalled}
+          id="examples-btn"
+          onClick={() => setShowExamplesPanel(true)}
           className="btn-ghost"
-          style={{ fontSize: 12, opacity: importingInstalled ? 0.6 : 1 }}
-          title="Import installed marketplace items into workspace"
+          style={{ fontSize: 12 }}
+          title="Browse and load pre-built example projects"
         >
-          {importingInstalled ? "Importing..." : "Import Installed Items"}
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 4 }}>
+            <path d="M4 19.5A2.5 2.5 0 016.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
+          </svg>
+          Examples
         </button>
         {showPlanBanner && (
           <div style={{ width: "100%", marginTop: 0 }}>
@@ -1540,37 +1569,8 @@ export default function IDEPage() {
                 </svg>
               </button>
             </div>
-
-            <div style={{ paddingBottom: 16 }}>
-              {SIDEBAR_ITEMS.map((item) => (
-                <div key={item.label}
-                  onClick={() => setActiveGuide({ label: item.label, content: QUICK_GUIDES[item.label] })}
-                  style={{
-                    padding: "8px 16px", borderRadius: 6, margin: "1px 8px",
-                    cursor: "pointer", transition: "0.15s",
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(157,39,222,0.15)")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <div>
-                      <p style={{ fontSize: 12, fontWeight: 600, color: "#9D27DE", fontFamily: "Superstar, fantasy", letterSpacing: "0.05em" }}>{item.label}</p>
-                      <p style={{ fontSize: 10, color: "rgba(242,242,240,0.4)" }}>{item.hint}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ margin: "auto 16px 16px", padding: "12px", background: "rgba(157,39,222,0.05)", borderRadius: 8, border: "1px solid rgba(157,39,222,0.1)" }}>
-              <CassetteMascot size={64} mood={compileStatus === "success" ? "excited" : compileStatus === "error" ? "thinking" : "idle"} animate />
-              <p style={{ fontSize: 10, color: "rgba(242,242,240,0.35)", textAlign: "center", marginTop: 6 }}>
-                {compileStatus === "success"
-                  ? (firmwareReady ? "Ready to flash! 🎉" : "Code ready · Firmware build pending")
-                  : compileStatus === "error"
-                    ? "Check your blocks"
-                    : "Drag blocks to build"}
-              </p>
+            <div style={{ flex: 1, overflow: "hidden" }}>
+              <QuickHelpPanel />
             </div>
           </>
         )}
@@ -2082,6 +2082,59 @@ export default function IDEPage() {
               <button className="btn-primary" onClick={handleExportToMarketplace} disabled={exportingMarketplace || compileStatus !== "success"}>
                 {exportingMarketplace ? "Exporting..." : "Export"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Examples Browser Panel */}
+      {showExamplesPanel && (
+        <div
+          style={{ position: "fixed", inset: 0, zIndex: 250, background: "rgba(0,0,0,0.8)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", animation: "fade-in 0.2s ease" }}
+          onClick={() => setShowExamplesPanel(false)}
+        >
+          <div
+            style={{ background: "linear-gradient(170deg, #1A0628 0%, #12031C 100%)", border: "1px solid rgba(157,39,222,0.4)", borderRadius: 16, padding: "28px 32px", width: 780, maxWidth: "94vw", maxHeight: "80vh", display: "flex", flexDirection: "column", boxShadow: "0 24px 80px rgba(0,0,0,0.6), 0 0 40px rgba(157,39,222,0.1)", animation: "slide-up 0.3s ease" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+              <div>
+                <h2 style={{ fontSize: 20, fontWeight: 700, color: "#F2F2F0", margin: 0 }}>Example Projects</h2>
+                <p style={{ fontSize: 12, color: "rgba(242,242,240,0.45)", marginTop: 4 }}>Load a pre-configured example, compile it, and export to marketplace</p>
+              </div>
+              <button className="btn-ghost" onClick={() => setShowExamplesPanel(false)} style={{ padding: "6px 10px" }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div style={{ overflowY: "auto", flex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, paddingRight: 4 }}>
+              {MARKETPLACE_EXAMPLES.map((ex, i) => {
+                const boardCfg = getBoardConfig(ex.boardId);
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      background: "rgba(0,0,0,0.3)", border: "1px solid rgba(157,39,222,0.15)", borderRadius: 10, padding: "14px 16px",
+                      display: "flex", flexDirection: "column", gap: 8, transition: "border-color 0.2s, background 0.2s", cursor: "pointer",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(157,39,222,0.5)"; e.currentTarget.style.background = "rgba(157,39,222,0.06)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = "rgba(157,39,222,0.15)"; e.currentTarget.style.background = "rgba(0,0,0,0.3)"; }}
+                    onClick={() => loadExample(ex)}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: "#F2F2F0" }}>{i + 1}. {ex.name}</span>
+                      <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, background: "rgba(157,39,222,0.15)", color: "#B94FF0", fontWeight: 600 }}>{ex.category}</span>
+                    </div>
+                    <p style={{ fontSize: 11, color: "rgba(242,242,240,0.5)", margin: 0, lineHeight: 1.5 }}>{ex.description}</p>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "auto" }}>
+                      <span style={{ fontSize: 10, color: boardCfg.color, display: "flex", alignItems: "center", gap: 4 }}>
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: boardCfg.color, display: "inline-block" }} />
+                        {boardCfg.name}
+                      </span>
+                      <span style={{ fontSize: 10, color: "rgba(157,39,222,0.7)", fontWeight: 600 }}>Click to load →</span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>

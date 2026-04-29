@@ -163,8 +163,8 @@ export function defineDisplayBlocks(Blockly: any) {
       const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '6';
       const cnt = generator.valueToCode(block, 'COUNT', generator.ORDER_ATOMIC) || '10';
       compiler.addInclude(`#include <Adafruit_NeoPixel.h>`);
-      compiler.addGlobal(`Adafruit_NeoPixel strip(1, 6, NEO_GRB + NEO_KHZ800);`);
-      compiler.addSetup(`strip.updateLength(${cnt});\nstrip.setPin(${pin});\nstrip.begin();\nstrip.show();`);
+      compiler.addGlobal(`Adafruit_NeoPixel strip(${cnt}, ${pin}, NEO_GRB + NEO_KHZ800);`);
+      compiler.addSetup(`strip.begin();\nstrip.show();`);
       return "";
     };
     generator.forBlock["neopixel_set_pixel"] = function(block: any, generator: any) {
