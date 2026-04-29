@@ -83,7 +83,7 @@ export default function IDEPage() {
   const [marketplaceToolboxBlocks, setMarketplaceToolboxBlocks] = useState<string[]>([]);
   const [marketplaceImportItems, setMarketplaceImportItems] = useState<Array<{ id: string; name: string; blocksXml: string }>>([]);
   const [marketplaceInstalledCount, setMarketplaceInstalledCount] = useState(0);
-  const [importingInstalled, setImportingInstalled] = useState(false);
+  const [_importingInstalled, setImportingInstalled] = useState(false);
   const [exportName, setExportName] = useState("");
   const [exportFunctionality, setExportFunctionality] = useState("");
   const [exportDescription, setExportDescription] = useState("");
@@ -93,7 +93,8 @@ export default function IDEPage() {
   const mlOnboardingShownRef = useRef(false);
   const showPlanBanner = !canCompile || !canStartTraining;
 
-  const QUICK_GUIDES: Record<string, any> = {
+  // @ts-ignore: Kept for future sidebar quick-help usage
+  const _QUICK_GUIDES: Record<string, any> = {
     "Control Logic": (
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <p>Execution flow blocks natively map to C++ control structures, directly determining how the CPU processes your logic algorithm.</p>
@@ -188,7 +189,8 @@ export default function IDEPage() {
     )
   };
 
-  const SIDEBAR_ITEMS = [
+  // @ts-ignore: Kept for future sidebar usage
+  const _SIDEBAR_ITEMS = [
     { label: "Control Logic", hint: "If, loops, flow" },
     { label: "Variables", hint: "Store and read values" },
     { label: "Functions", hint: "Reusable block code" },
@@ -682,7 +684,8 @@ export default function IDEPage() {
     saveTimeoutRef.current = setTimeout(() => saveProject(), 3000);
   };
 
-  const importInstalledMarketplaceItems = async () => {
+  // @ts-ignore: Kept for marketplace refresh functionality
+  const _importInstalledMarketplaceItems = async () => {
     if (!user || !projectId || !workspaceRef.current || !Blockly) return;
     setImportingInstalled(true);
     try {
