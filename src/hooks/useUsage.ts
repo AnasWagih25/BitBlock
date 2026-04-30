@@ -108,17 +108,23 @@ export function useUsage(uid: string | undefined, planId: PlanId | string | unde
     const today = todayStr();
     const month = monthStr();
 
-    const snap = await getDoc(ref);
-    const current = snap.exists() ? normalizeUsage(snap.data() as UsageData) : emptyUsage;
+    try {
+      const snap = await getDoc(ref);
+      const current = snap.exists() ? normalizeUsage(snap.data() as UsageData) : emptyUsage;
 
-    await setDoc(ref, {
-      compilesToday: (current.lastCompileDate === today ? current.compilesToday : 0) + 1,
-      compilesThisMonth: (current.lastCompileMonth === month ? current.compilesThisMonth : 0) + 1,
-      lastCompileDate: today,
-      lastCompileMonth: month,
-      trainingJobsThisMonth: current.lastTrainingMonth === month ? current.trainingJobsThisMonth : 0,
-      lastTrainingMonth: current.lastTrainingMonth || month,
-    });
+      await setDoc(ref, {
+        compilesToday: (current.lastCompileDate === today ? current.compilesToday : 0) + 1,
+        compilesThisMonth: (current.lastCompileMonth === month ? current.compilesThisMonth : 0) + 1,
+        lastCompileDate: today,
+        lastCompileMonth: month,
+        trainingJobsThisMonth: current.lastTrainingMonth === month ? current.trainingJobsThisMonth : 0,
+        lastTrainingMonth: current.lastTrainingMonth || month,
+      });
+    } catch (err: any) {
+      // Server-side functions remain the source of truth for quotas; ignore advisory client counter failures.
+      if (String(err?.message || "").toLowerCase().includes("missing or insufficient permissions")) return;
+      throw err;
+    }
   }, [uid]);
 
   const incrementTrainingCount = useCallback(async () => {
@@ -127,17 +133,23 @@ export function useUsage(uid: string | undefined, planId: PlanId | string | unde
     const today = todayStr();
     const month = monthStr();
 
-    const snap = await getDoc(ref);
-    const current = snap.exists() ? normalizeUsage(snap.data() as UsageData) : emptyUsage;
+    try {
+      const snap = await getDoc(ref);
+      const current = snap.exists() ? normalizeUsage(snap.data() as UsageData) : emptyUsage;
 
-    await setDoc(ref, {
-      compilesToday: current.lastCompileDate === today ? current.compilesToday : 0,
-      compilesThisMonth: current.lastCompileMonth === month ? current.compilesThisMonth : 0,
-      lastCompileDate: current.lastCompileDate || today,
-      lastCompileMonth: current.lastCompileMonth || month,
-      trainingJobsThisMonth: (current.lastTrainingMonth === month ? current.trainingJobsThisMonth : 0) + 1,
-      lastTrainingMonth: month,
-    });
+      await setDoc(ref, {
+        compilesToday: current.lastCompileDate === today ? current.compilesToday : 0,
+        compilesThisMonth: current.lastCompileMonth === month ? current.compilesThisMonth : 0,
+        lastCompileDate: current.lastCompileDate || today,
+        lastCompileMonth: current.lastCompileMonth || month,
+        trainingJobsThisMonth: (current.lastTrainingMonth === month ? current.trainingJobsThisMonth : 0) + 1,
+        lastTrainingMonth: month,
+      });
+    } catch (err: any) {
+      // Server-side functions remain the source of truth for quotas; ignore advisory client counter failures.
+      if (String(err?.message || "").toLowerCase().includes("missing or insufficient permissions")) return;
+      throw err;
+    }
   }, [uid]);
 
   return {
