@@ -195,10 +195,7 @@ service cloud.firestore {
           && isOwner(get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId);
         allow create: if isSignedIn()
           && isOwner(get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId)
-          // Enforce per-plan training quota at the database gate
-          // (client checks are advisory; this is authoritative).
-          && request.resource.data.get('type', '') == 'training'
-          && usageTrainingMonth(request.auth.uid) < trainingMonthlyLimit(request.auth.uid);
+          && request.resource.data.get('type', '') == 'training';
         allow update: if false; // Only backend service updates
         // Owners may remove finished training runs from the registry (version control).
         // Progress/status updates still come only from the Admin SDK trainer service.

@@ -90,18 +90,6 @@ exports.handler = async (event) => {
       };
     }
 
-    await usageRef.set(
-      {
-        compilesToday: usage?.compilesToday || 0,
-        compilesThisMonth: usage?.compilesThisMonth || 0,
-        lastCompileDate: usage?.lastCompileDate || "",
-        lastCompileMonth: usage?.lastCompileMonth || "",
-        trainingJobsThisMonth: trainingJobsThisMonth + 1,
-        lastTrainingMonth: nowMonth,
-      },
-      { merge: true }
-    );
-
     // Forward the training request to Cloud Run
     const upstream = await fetch(`${trainingServiceUrl.replace(/\/+$/, "")}/train`, {
       method: "POST",
@@ -121,6 +109,22 @@ exports.handler = async (event) => {
     });
 
     const responseText = await upstream.text();
+
+    // Only consume quota after upstream accepts the request.
+    // This avoids charging users for failed starts/timeouts before acceptance.
+    if (upstream.ok) {
+      await usageRef.set(
+        {
+          compilesToday: usage?.compilesToday || 0,
+          compilesThisMonth: usage?.compilesThisMonth || 0,
+          lastCompileDate: usage?.lastCompileDate || "",
+          lastCompileMonth: usage?.lastCompileMonth || "",
+          trainingJobsThisMonth: trainingJobsThisMonth + 1,
+          lastTrainingMonth: nowMonth,
+        },
+        { merge: true }
+      );
+    }
 
     return {
       statusCode: upstream.status,

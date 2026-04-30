@@ -501,45 +501,53 @@ export default function TrainingView({ projectId, boardId, task, setTask, select
       }
 
        // 2. Listen for real-time progress updates from the backend
-       const unsubscribe = onSnapshot(doc(db, "projects", projectId || "temp", "jobs", jobRef.id), (docSnap) => {
-           if (docSnap.exists()) {
-               const data = docSnap.data();
-               if (data.epoch !== undefined) setEpoch(data.epoch);
-               if (data.loss !== undefined) setLoss(data.loss);
-               if (data.acc !== undefined) setAcc(data.acc);
-               
-               if (data.status === 'completed') {
-                  sessionStorage.removeItem(activeJobStorageKey);
-                   setStatus('done');
-                   
-                   let cm2d = data.confusionMatrix;
-                   if (data.confusionMatrix && data.labels && data.confusionMatrix.length === data.labels.length * data.labels.length) {
-                       // Unflatten the 1D array from Firestore back into a 2D array
-                       cm2d = [];
-                       const numLabels = data.labels.length;
-                       for(let i=0; i<numLabels; i++) {
-                           cm2d.push(data.confusionMatrix.slice(i * numLabels, (i+1) * numLabels));
-                       }
-                   }
+      const unsubscribe = onSnapshot(
+        doc(db, "projects", projectId || "temp", "jobs", jobRef.id),
+        (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            if (data.epoch !== undefined) setEpoch(data.epoch);
+            if (data.loss !== undefined) setLoss(data.loss);
+            if (data.acc !== undefined) setAcc(data.acc);
 
-                   setModelInfo({
-                       modelUrl: data.modelUrl,
-                       headerUrl: data.headerUrl,
-                       labels: data.labels,
-                       sizeBytes: data.modelSizeBytes,
-                       confusionMatrix: cm2d,
-                       metrics: data.metrics,
-                       diagnostics: data.diagnostics,
-                   });
-                   unsubscribe();
-               } else if (data.status === 'failed') {
-                  sessionStorage.removeItem(activeJobStorageKey);
-                   setStatus('idle');
-                   void alert("Training failed in cloud: " + (data.error || "Unknown error"));
-                   unsubscribe();
-               }
-           }
-       });
+            if (data.status === 'completed') {
+              sessionStorage.removeItem(activeJobStorageKey);
+              setStatus('done');
+
+              let cm2d = data.confusionMatrix;
+              if (data.confusionMatrix && data.labels && data.confusionMatrix.length === data.labels.length * data.labels.length) {
+                // Unflatten the 1D array from Firestore back into a 2D array
+                cm2d = [];
+                const numLabels = data.labels.length;
+                for (let i = 0; i < numLabels; i++) {
+                  cm2d.push(data.confusionMatrix.slice(i * numLabels, (i + 1) * numLabels));
+                }
+              }
+
+              setModelInfo({
+                modelUrl: data.modelUrl,
+                headerUrl: data.headerUrl,
+                labels: data.labels,
+                sizeBytes: data.modelSizeBytes,
+                confusionMatrix: cm2d,
+                metrics: data.metrics,
+                diagnostics: data.diagnostics,
+              });
+              unsubscribe();
+            } else if (data.status === 'failed') {
+              sessionStorage.removeItem(activeJobStorageKey);
+              setStatus('idle');
+              void alert("Training failed in cloud: " + (data.error || "Unknown error"));
+              unsubscribe();
+            }
+          }
+        },
+        (err) => {
+          console.warn("Training job listener error:", err?.message || err);
+          sessionStorage.removeItem(activeJobStorageKey);
+          setStatus("idle");
+        }
+      );
 
        // 3. Kick off the training service.
        // The server keeps the HTTP connection open for the full training
@@ -569,6 +577,12 @@ export default function TrainingView({ projectId, boardId, task, setTask, select
       }).then(async (res) => {
         if (!res.ok) {
           const payload = await res.json().catch(() => ({} as any));
+          // Netlify can return 504 while upstream Cloud Run training keeps running.
+          // Keep UI in training state and rely on Firestore listener for true job status.
+          if (res.status === 504) {
+            console.warn("Training start request timed out at edge (504); waiting on job listener.");
+            return;
+          }
           setStatus("idle");
           await alert(payload?.error || `Could not start training (${res.status}).`);
         }
