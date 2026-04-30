@@ -70,7 +70,7 @@ export default function PlanLimitBanner({
       </span>
 
       <Link
-        to="/billing"
+        to={isBetaMode ? "/profile" : "/billing"}
         className="btn-primary"
         style={{
           fontSize: 11,
@@ -84,7 +84,7 @@ export default function PlanLimitBanner({
           boxShadow: "0 4px 16px rgba(157,39,222,0.3)",
         }}
       >
-        {suggested ? `Upgrade to ${PLANS[suggested].name}` : "Manage billing"}
+        {isBetaMode ? "View Quotas" : (suggested ? `Upgrade to ${PLANS[suggested].name}` : "Manage billing")}
         <ArrowUpRight size={12} />
       </Link>
 

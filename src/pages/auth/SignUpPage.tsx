@@ -5,7 +5,7 @@ import CassetteMascot from "../../components/ui/CassetteMascot";
 import { PLAN_ORDER, PLANS, type PlanId } from "../../lib/plans";
 
 export default function SignUpPage() {
-  const { signUp, signInWithGoogle } = useAuth();
+  const { signUp, signInWithGoogle, isBetaMode } = useAuth();
   const navigate = useNavigate();
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
@@ -87,7 +87,11 @@ export default function SignUpPage() {
           Build firmware visually. Flash it directly. No coding experience needed.
         </p>
         <div style={{ marginTop: 32, display: "flex", flexDirection: "column", gap: 10 }}>
-          {["✓ Start free by default", "✓ Upgrade anytime", "✓ Community marketplace access"].map((t) => (
+          {[
+            "✓ Start free by default",
+            ...(!isBetaMode ? ["✓ Upgrade anytime"] : []),
+            "✓ Community marketplace access"
+          ].map((t) => (
             <p key={t} style={{ fontSize: 13, color: "rgba(242,242,240,0.5)" }}>{t}</p>
           ))}
         </div>
@@ -194,37 +198,39 @@ export default function SignUpPage() {
                 </div>
               )}
             </div>
-            <div>
-              <label style={{ fontSize: 13, color: "rgba(242,242,240,0.6)", display: "block", marginBottom: 8 }}>Choose Plan</label>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                {PLAN_ORDER.map((id) => {
-                  const p = PLANS[id];
-                  const active = selectedPlan === id;
-                  return (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => setSelectedPlan(id)}
-                      style={{
-                        border: active ? `1px solid ${p.color}` : "1px solid rgba(255,255,255,0.12)",
-                        background: active ? `${p.color}22` : "rgba(255,255,255,0.03)",
-                        color: "#F2F2F0",
-                        borderRadius: 10,
-                        padding: "8px 10px",
-                        textAlign: "left",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <div style={{ fontSize: 12, fontWeight: 700 }}>{p.name}</div>
-                      <div style={{ fontSize: 11, color: "rgba(242,242,240,0.6)" }}>{p.priceLabel}</div>
-                    </button>
-                  );
-                })}
+            {!isBetaMode && (
+              <div>
+                <label style={{ fontSize: 13, color: "rgba(242,242,240,0.6)", display: "block", marginBottom: 8 }}>Choose Plan</label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  {PLAN_ORDER.map((id) => {
+                    const p = PLANS[id];
+                    const active = selectedPlan === id;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => setSelectedPlan(id)}
+                        style={{
+                          border: active ? `1px solid ${p.color}` : "1px solid rgba(255,255,255,0.12)",
+                          background: active ? `${p.color}22` : "rgba(255,255,255,0.03)",
+                          color: "#F2F2F0",
+                          borderRadius: 10,
+                          padding: "8px 10px",
+                          textAlign: "left",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <div style={{ fontSize: 12, fontWeight: 700 }}>{p.name}</div>
+                        <div style={{ fontSize: 11, color: "rgba(242,242,240,0.6)" }}>{p.priceLabel}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p style={{ marginTop: 8, fontSize: 11, color: "rgba(242,242,240,0.35)" }}>
+                  Default is Free if you don&apos;t choose another plan.
+                </p>
               </div>
-              <p style={{ marginTop: 8, fontSize: 11, color: "rgba(242,242,240,0.35)" }}>
-                Default is Free if you don&apos;t choose another plan.
-              </p>
-            </div>
+            )}
             <p style={{ fontSize: 11, color: "rgba(242,242,240,0.3)", lineHeight: 1.5 }}>
               By creating an account you agree to our{" "}
               <Link to="/terms" style={{ color: "#9D27DE", textDecoration: "none" }}>Terms of Service</Link>,{" "}

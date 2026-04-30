@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
 import CassetteMascot from "../components/ui/CassetteMascot";
 import { Zap, Puzzle, CloudLightning, Usb, Cpu, Globe } from "lucide-react";
 import DemoModal from "../components/ui/DemoModal";
@@ -51,6 +52,7 @@ const stats = [
 ];
 
 export default function LandingPage() {
+  const { isBetaMode } = useAuth();
   const [showDemo, setShowDemo] = useState(false);
   const heroRef = useRef<HTMLDivElement>(null);
 
@@ -86,10 +88,10 @@ export default function LandingPage() {
           <span className="badge badge-purple" style={{ marginLeft: 4 }}>BETA</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <Link to="/pricing" className="btn-ghost">Pricing</Link>
+          {!isBetaMode && <Link to="/pricing" className="btn-ghost">Pricing</Link>}
           <Link to="/login" className="btn-ghost">Log In</Link>
           <Link to="/signup" className="btn-primary" style={{ padding: "9px 22px", fontSize: 13 }}>
-            Get Started Free
+            {isBetaMode ? "Join the Beta" : "Get Started Free"}
           </Link>
         </div>
       </nav>
@@ -154,7 +156,7 @@ export default function LandingPage() {
             </p>
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
               <Link to="/signup" className="btn-primary" style={{ fontSize: 15, padding: "14px 32px" }}>
-                Start Building Free →
+                {isBetaMode ? "Join the Beta →" : "Start Building Free →"}
               </Link>
               <button 
                 onClick={() => setShowDemo(true)}
@@ -291,7 +293,7 @@ export default function LandingPage() {
               Join thousands of makers, students, and engineers building with BitBlock.
             </p>
             <Link to="/signup" className="btn-primary" style={{ fontSize: 16, padding: "16px 40px" }}>
-              Create Free Account →
+              {isBetaMode ? "Join the Beta →" : "Create Free Account →"}
             </Link>
           </div>
         </div>
@@ -309,6 +311,8 @@ export default function LandingPage() {
           {[
             { label: "Docs", href: "#" },
             { label: "Marketplace", to: "/marketplace" },
+            { label: "Privacy Policy", to: "/privacy" },
+            { label: "Terms", to: "/terms" },
             { label: "GitHub", href: "https://github.com/AnasWagih25/BitBlock" },
             { label: "Discord", href: "#" }
           ].map((l) => (
