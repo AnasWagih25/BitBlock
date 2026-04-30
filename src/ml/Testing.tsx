@@ -173,8 +173,21 @@ export default function TestingView({
         : "/.netlify/functions/predict-model";
 
       const res = await fetch(predictUrl, { method: 'POST', body: formData });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Prediction failed');
+      const raw = await res.text();
+      let data: any = null;
+      try {
+        data = raw ? JSON.parse(raw) : null;
+      } catch {
+        data = null;
+      }
+      if (!res.ok) {
+        const serverMessage = data?.error || data?.message;
+        const textPreview = raw ? raw.replace(/\s+/g, " ").slice(0, 160) : "";
+        throw new Error(serverMessage || `Prediction failed (${res.status}). ${textPreview || "Unexpected response from server."}`);
+      }
+      if (!data || !Array.isArray(data.predictions)) {
+        throw new Error("Prediction endpoint returned an invalid response payload.");
+      }
       setPredictions(data.predictions || []);
     } catch (e: any) {
       await alert('Prediction failed: ' + (e.message || 'Unknown error'));
