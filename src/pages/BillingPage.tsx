@@ -331,7 +331,7 @@ export default function BillingPage() {
             )
           )}
         </div>
-        <span style={{ fontSize: 12, color: "rgba(242,242,240,0.25)" }}>© 2026 BitBlock. All rights reserved.</span>
+        <span style={{ fontSize: 12, color: "rgba(242,242,240,0.25)" }}>© 2026 8BitLab. Property and development of 8bitlab.org.</span>
       </footer>
     </div>
   );

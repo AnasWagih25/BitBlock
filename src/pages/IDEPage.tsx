@@ -7,6 +7,7 @@ import { useAppDialog } from "../contexts/DialogContext";
 import { useUsage } from "../hooks/useUsage";
 import CassetteMascot from "../components/ui/CassetteMascot";
 import PlanLimitBanner from "../components/PlanLimitBanner";
+import SerialConnectionModal from "../components/ui/SerialConnectionModal";
 import { BOARDS, getBoardConfig } from "../boards/registry";
 import { TASK_ARCHITECTURES, ML_ARCHITECTURES } from "../boards/MLCapabilities";
 import { compiler } from "../compiler/assembler";
@@ -90,6 +91,8 @@ export default function IDEPage() {
   const [exportCategory, setExportCategory] = useState("GPIO");
   const [compiledSourceHash, setCompiledSourceHash] = useState("");
   const [showExamplesPanel, setShowExamplesPanel] = useState(false);
+  const [showPortSelector, setShowPortSelector] = useState(false);
+  const portSelectionResolver = useRef<((port: any) => void) | null>(null);
   const mlOnboardingShownRef = useRef(false);
   const showPlanBanner = !canCompile || !canStartTraining;
 
@@ -1050,9 +1053,25 @@ export default function IDEPage() {
       const existingSnap = await getDocs(collection(db, "marketplace"));
       const existing = existingSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as any[];
 
-      const sameOutput = existing.find((b) => b.compiledOutputHash === compiledHash || b.sourceHash === sourceHash);
-      if (sameOutput) {
-        await alert(`Export blocked: "${sameOutput.name || "existing block"}" already outputs exactly the same code.`);
+      const getLogicString = (code: string) => {
+        if (!code) return "";
+        return code
+          .replace(/\/\/.*$/gm, '') // strip single-line comments (including board info)
+          .replace(/\/\*[\s\S]*?\*\//g, '') // strip multi-line comments
+          .replace(/"(?:[^"\\]|\\.)*"/g, '""') // strip string literals
+          .replace(/\bF\(""\)/g, '""') // normalize AVR F() strings to regular strings
+          .replace(/\b\d+(?:\.\d+)?(?:f|L|UL|u|U)?\b/g, '0') // strip numbers
+          .replace(/\s+/g, ''); // strip all whitespace
+      };
+      const currentLogicString = getLogicString(generatedCode);
+
+      const sameLogic = existing.find((b) => {
+        if (b.sourceCode && getLogicString(b.sourceCode) === currentLogicString) return true;
+        return b.compiledOutputHash === compiledHash || b.sourceHash === sourceHash;
+      });
+
+      if (sameLogic) {
+        await alert(`Export blocked: Author "${sameLogic.author || "Unknown"}" already published "${sameLogic.name || "an item"}" with the same logic as this code. To prevent spam, this will not be exported.`);
         return;
       }
 
@@ -1122,22 +1141,16 @@ export default function IDEPage() {
     return { parts: nonEmpty };
   };
 
+  const requestPortViaModal = (): Promise<any> => {
+    return new Promise((resolve) => {
+      portSelectionResolver.current = resolve;
+      setShowPortSelector(true);
+    });
+  };
+
   const ensureSerialPort = async () => {
-    // Reuse an already connected port first to avoid repeated pairing prompts.
     if (connectedPort) return connectedPort;
-
-    // @ts-ignore
-    const rememberedPorts = await navigator.serial.getPorts();
-    if (rememberedPorts.length > 0) {
-      const rememberedPort = rememberedPorts[0];
-      setConnectedPort(rememberedPort);
-      return rememberedPort;
-    }
-
-    // @ts-ignore
-    const requestedPort = await navigator.serial.requestPort();
-    setConnectedPort(requestedPort);
-    return requestedPort;
+    return await requestPortViaModal();
   };
 
   const releaseOpenSerialPorts = async () => {
@@ -1180,17 +1193,28 @@ export default function IDEPage() {
       await alert("WebSerial is not supported in your browser.\n\nPlease use Chrome or Edge.");
       return;
     }
-    try {
-      const port = await ensureSerialPort();
-      setConnectedPort(port);
-      const info = port.getInfo();
-      if (info.usbVendorId) {
-        appendLog(`[WebSerial] Paired hardware: VID ${info.usbVendorId} PID ${info.usbProductId}`);
-      } else {
-        appendLog(`[WebSerial] Device paired successfully`);
-      }
-    } catch (e: any) {
-      console.warn("Connection cancelled or failed", e);
+    setShowPortSelector(true);
+  };
+
+  const handleClosePortSelector = () => {
+    setShowPortSelector(false);
+    if (portSelectionResolver.current) {
+      portSelectionResolver.current(null);
+      portSelectionResolver.current = null;
+    }
+  };
+
+  const handleSelectPort = (port: any) => {
+    setConnectedPort(port);
+    const info = port.getInfo();
+    if (info.usbVendorId) {
+      appendLog(`[WebSerial] Paired hardware: VID ${info.usbVendorId} PID ${info.usbProductId}`);
+    } else {
+      appendLog(`[WebSerial] Device paired successfully`);
+    }
+    if (portSelectionResolver.current) {
+      portSelectionResolver.current(port);
+      portSelectionResolver.current = null;
     }
   };
 
@@ -1233,6 +1257,10 @@ export default function IDEPage() {
 
     try {
       const port = await ensureSerialPort();
+      if (!port) {
+        appendLog("[WebSerial] Action cancelled (no port selected).");
+        return;
+      }
       appendLog("[WebSerial] Port acquired for flashing");
       await releaseOpenSerialPorts();
 
@@ -2147,6 +2175,12 @@ export default function IDEPage() {
           </div>
         </div>
       )}
+
+      <SerialConnectionModal
+        isOpen={showPortSelector}
+        onClose={handleClosePortSelector}
+        onSelectPort={handleSelectPort}
+      />
 
       {/* Custom Variable Prompt Dialog */}
       {promptDialog && (

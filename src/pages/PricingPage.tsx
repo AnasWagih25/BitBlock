@@ -357,7 +357,7 @@ export default function PricingPage() {
         {/* Footer */}
         <footer className="footer-links" style={{ padding: "32px 40px", borderTop: "1px solid rgba(157,39,222,0.1)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
           <span style={{ fontFamily: "Superstar, fantasy", fontSize: 16, color: "#9D27DE" }}>BITBLOCK</span>
-          <span style={{ fontSize: 12, color: "rgba(242,242,240,0.25)" }}>© 2026 BitBlock. All rights reserved.</span>
+          <span style={{ fontSize: 12, color: "rgba(242,242,240,0.25)" }}>© 2026 8BitLab. Property and development of 8bitlab.org.</span>
         </footer>
       </div>
     );
@@ -579,7 +579,7 @@ export default function PricingPage() {
             )
           )}
         </div>
-        <span style={{ fontSize: 12, color: "rgba(242,242,240,0.25)" }}>© 2026 BitBlock. All rights reserved.</span>
+        <span style={{ fontSize: 12, color: "rgba(242,242,240,0.25)" }}>© 2026 8BitLab. Property and development of 8bitlab.org.</span>
       </footer>
     </div>
   );
