@@ -65,11 +65,12 @@ const imageHyperparams: MLHyperparameter[] = [
 ];
 
 const faceHyperparams: MLHyperparameter[] = [
-  { id: "epochs", name: "Training Epochs", type: "number", default: 40, min: 5, max: 500 },
+  { id: "epochs", name: "Training Epochs", type: "number", default: 60, min: 10, max: 500 },
   { id: "batch_size", name: "Batch Size", type: "number", default: 16, min: 1, max: 128 },
-  { id: "learning_rate", name: "Learning Rate", type: "select", default: 0.001, options: [
+  { id: "learning_rate", name: "Learning Rate", type: "select", default: 0.0005, options: [
       { label: "0.01 (Fast)", value: 0.01 },
-      { label: "0.001 (Recommended)", value: 0.001 },
+      { label: "0.001 (Standard)", value: 0.001 },
+      { label: "0.0005 (Recommended for Faces)", value: 0.0005 },
       { label: "0.0001 (Slow / Fine-tuning)", value: 0.0001 },
       { label: "0.00001 (Micro)", value: 0.00001 }
   ]},
@@ -78,7 +79,7 @@ const faceHyperparams: MLHyperparameter[] = [
       { label: "64 (Recommended)", value: 64 },
       { label: "128 (Large — slower, more accurate)", value: 128 },
   ]},
-  { id: "fine_tune_epochs", name: "Fine-Tune Epochs", type: "number", default: 5, min: 0, max: 30 },
+  { id: "fine_tune_epochs", name: "Fine-Tune Epochs", type: "number", default: 10, min: 0, max: 40 },
 ];
 
 export const ML_ARCHITECTURES: Record<string, MLArchitecture> = {

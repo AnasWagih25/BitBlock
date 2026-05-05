@@ -40,12 +40,12 @@ export default function LoginPage() {
   };
 
   return (
-    <div style={{
+    <div data-page="login" style={{
       minHeight: "100vh", display: "flex",
       background: "#0A0A0A", fontFamily: "Space Grotesk, sans-serif",
     }}>
       {/* Left panel */}
-      <div className="grid-bg" style={{
+      <div className="auth-branding grid-bg" style={{
         flex: 1, display: "flex", flexDirection: "column",
         alignItems: "center", justifyContent: "center",
         padding: 60, position: "relative", overflow: "hidden",
@@ -76,7 +76,7 @@ export default function LoginPage() {
       </div>
 
       {/* Right: Form */}
-      <div style={{
+      <div className="auth-form" style={{
         width: 480, display: "flex", flexDirection: "column",
         alignItems: "center", justifyContent: "center", padding: "60px 48px",
       }}>

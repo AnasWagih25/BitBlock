@@ -543,7 +543,7 @@ def _inverted_residual_block(x, filters, expand_ratio=2, stride=1):
 
 
 def build_face_recognition(input_shape, num_classes, embedding_dim=64,
-                           learning_rate=0.001, dropout=0.2):
+                           learning_rate=0.001, dropout=0.4):
     """
     Face recognition via MobileNetV2 transfer learning for ESP32-CAM.
 
@@ -555,7 +555,7 @@ def build_face_recognition(input_shape, num_classes, embedding_dim=64,
       • MobileNetV2 α=0.35 backbone (frozen for initial training)
       • 64-dim embedding head with BatchNorm
       • Softmax classification (person labels)
-      • Heavy face-specific augmentation for small-dataset robustness
+      • Aggressive face-specific augmentation for small-dataset robustness
 
     INT8 quantized: ~250-350KB TFLite | ~10 FPS on ESP32-CAM at 240 MHz.
     """
@@ -571,27 +571,35 @@ def build_face_recognition(input_shape, num_classes, embedding_dim=64,
 
     inputs = keras.Input(shape=input_shape)
 
-    # ── Face-specific augmentation (stripped during TFLite export) ──
+    # ── Aggressive face-specific augmentation ──
+    # Small face datasets REQUIRE heavy augmentation to avoid overfitting.
     x = layers.RandomFlip("horizontal")(inputs)
-    x = layers.RandomRotation(0.08)(x)
-    x = layers.RandomZoom((-0.1, 0.1))(x)
+    x = layers.RandomRotation(0.10)(x)
+    x = layers.RandomZoom((-0.15, 0.15))(x)
+    x = layers.RandomBrightness(factor=0.20)(x)
+    x = layers.RandomContrast(factor=0.20)(x)
+    # Gaussian noise layer for regularization
+    x = layers.GaussianNoise(0.05)(x)
 
     # ── Pretrained backbone ──
     x = base(x)
 
     # ── Face embedding head ──
     x = layers.GlobalAveragePooling2D()(x)
+    x = layers.Dense(embedding_dim * 2, activation="relu")(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.Dropout(dropout)(x)
     x = layers.Dense(embedding_dim, use_bias=False)(x)
     x = layers.BatchNormalization(name="embedding")(x)
 
     # ── Classification head ──
-    x = layers.Dropout(dropout)(x)
+    x = layers.Dropout(dropout * 0.5)(x)
     outputs = layers.Dense(num_classes, activation="softmax")(x)
 
     model = keras.Model(inputs, outputs)
     model.compile(
         optimizer=keras.optimizers.Adam(learning_rate=learning_rate),
-        loss=keras.losses.CategoricalCrossentropy(label_smoothing=0.02),
+        loss=keras.losses.CategoricalCrossentropy(label_smoothing=0.1),
         metrics=["accuracy"],
     )
     return model
@@ -798,18 +806,21 @@ def run_training(samples, labels, architecture, task, bucket, on_epoch=None, on_
         X_train, X_val = X[train_idx], X[val_idx]
         y_train, y_val = y[train_idx], y[val_idx]
 
+    # Face recognition needs more patience to converge with aggressive augmentation
+    es_patience = 15 if architecture == "face_recognition" else 10
+    lr_patience = 5 if architecture == "face_recognition" else 4
     callbacks = [
         ProgressCallback(),
         keras.callbacks.ReduceLROnPlateau(
             monitor="val_loss",
             factor=0.5,
-            patience=4,
-            min_lr=1e-5,
+            patience=lr_patience,
+            min_lr=1e-6,
             verbose=0,
         ),
         keras.callbacks.EarlyStopping(
             monitor="val_loss",
-            patience=8,
+            patience=es_patience,
             restore_best_weights=True,
             verbose=0,
         ),
@@ -833,7 +844,7 @@ def run_training(samples, labels, architecture, task, bucket, on_epoch=None, on_
         verbose=0,
     )
 
-    # Lightweight fine-tuning for transfer models
+    # Fine-tuning for transfer learning models
     if architecture in ("mobilenet_v1", "face_recognition") and fine_tune_epochs > 0:
         base_model = None
         for layer in model.layers:
@@ -841,21 +852,49 @@ def run_training(samples, labels, architecture, task, bucket, on_epoch=None, on_
                 base_model = layer
                 break
         if base_model is not None:
-            unfreeze_from = int(len(base_model.layers) * 0.75)
+            # Face recognition: unfreeze more of the backbone for better adaptation
+            # MobileNetV2 α=0.35 is small, so 50% gives meaningful gradient flow
+            unfreeze_ratio = 0.5 if architecture == "face_recognition" else 0.75
+            unfreeze_from = int(len(base_model.layers) * unfreeze_ratio)
             for idx, layer in enumerate(base_model.layers):
                 layer.trainable = idx >= unfreeze_from
+
+            # Use a much lower LR for fine-tuning to avoid catastrophic forgetting
+            ft_lr = max(learning_rate * 0.05, 1e-5) if architecture == "face_recognition" else max(learning_rate * 0.1, 1e-5)
+            ft_smoothing = 0.1 if architecture == "face_recognition" else 0.02
             model.compile(
-                optimizer=keras.optimizers.Adam(learning_rate=max(learning_rate * 0.1, 1e-5)),
-                loss=keras.losses.CategoricalCrossentropy(label_smoothing=0.02),
+                optimizer=keras.optimizers.Adam(learning_rate=ft_lr),
+                loss=keras.losses.CategoricalCrossentropy(label_smoothing=ft_smoothing),
                 metrics=["accuracy"],
             )
+
+            # Fine-tune callbacks — same patience but lower min LR
+            ft_callbacks = [
+                ProgressCallback(),
+                keras.callbacks.ReduceLROnPlateau(
+                    monitor="val_loss",
+                    factor=0.5,
+                    patience=lr_patience,
+                    min_lr=1e-6,
+                    verbose=0,
+                ),
+                keras.callbacks.EarlyStopping(
+                    monitor="val_loss",
+                    patience=es_patience,
+                    restore_best_weights=True,
+                    verbose=0,
+                ),
+            ]
+
+            ft_epochs = max(8, fine_tune_epochs) if architecture == "face_recognition" else max(1, fine_tune_epochs)
+            print(f"[Train] Fine-tuning: unfreezing from layer {unfreeze_from}/{len(base_model.layers)}, LR={ft_lr}, epochs={ft_epochs}")
             model.fit(
                 X_train,
                 y_train,
                 validation_data=(X_val, y_val) if len(X_val) > 0 else None,
-                epochs=max(1, fine_tune_epochs),
+                epochs=ft_epochs,
                 batch_size=min(batch_size, len(X_train)),
-                callbacks=callbacks,
+                callbacks=ft_callbacks,
                 class_weight=class_weight,
                 verbose=0,
             )

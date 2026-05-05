@@ -53,12 +53,12 @@ export default function SignUpPage() {
   const strengthLabels = ["", "Weak", "Good", "Strong"];
 
   return (
-    <div style={{
+    <div data-page="signup" style={{
       minHeight: "100vh", display: "flex",
       background: "#0A0A0A", fontFamily: "Space Grotesk, sans-serif",
     }}>
       {/* Left branding */}
-      <div className="dot-bg" style={{
+      <div className="auth-branding dot-bg" style={{
         flex: 1, display: "flex", flexDirection: "column",
         alignItems: "center", justifyContent: "center",
         padding: 60, position: "relative", overflow: "hidden",
@@ -98,7 +98,7 @@ export default function SignUpPage() {
       </div>
 
       {/* Right: Form */}
-      <div style={{
+      <div className="auth-form" style={{
         width: 500, display: "flex", flexDirection: "column",
         alignItems: "center", justifyContent: "center", padding: "60px 48px",
         overflowY: "auto",

@@ -9,6 +9,7 @@ import {
   ArrowLeft, Crown, Zap, Shield, CreditCard, ArrowUpRight,
   BarChart3, Cpu, HardDrive, Rocket, ExternalLink,
 } from "lucide-react";
+import MobileMenuButton from "../components/ui/MobileMenuButton";
 
 /* ── Usage Bar ────────────────────────────────────────────── */
 function UsageBar({ label, used, max, color, text, icon }: {
@@ -80,7 +81,7 @@ export default function BillingPage() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#0A0A0A", fontFamily: "Space Grotesk, sans-serif" }}>
+    <div data-page="billing" style={{ minHeight: "100vh", background: "#0A0A0A", fontFamily: "Space Grotesk, sans-serif" }}>
 
       {/* ── Nav ─────────────────────────────────────────── */}
       <nav className="glass-dark" style={{
@@ -95,7 +96,8 @@ export default function BillingPage() {
               BIT<span style={{ color: "#F2F2F0" }}>BLOCK</span>
             </span>
           </Link>
-          <div style={{ display: "flex", gap: 4 }}>
+          <MobileMenuButton targetId="billing-nav-links" />
+          <div id="billing-nav-links" className="nav-links" style={{ display: "flex", gap: 4 }}>
             {[
               ...(user ? [{ label: "Projects", to: "/dashboard" }] : []),
               { label: "Marketplace", to: "/marketplace" },
@@ -115,7 +117,7 @@ export default function BillingPage() {
       </nav>
 
       {/* ── Header ─────────────────────────────────────── */}
-      <section className="grid-bg" style={{ position: "relative", overflow: "hidden", padding: "48px 40px 40px" }}>
+      <section className="grid-bg billing-hero" style={{ position: "relative", overflow: "hidden", padding: "48px 40px 40px" }}>
         <div style={{ position: "absolute", top: "-15%", left: "15%", width: 450, height: 450, borderRadius: "50%", background: "radial-gradient(circle, rgba(157,39,222,0.15) 0%, transparent 70%)", filter: "blur(50px)", pointerEvents: "none" }} />
         <div style={{ maxWidth: 800, margin: "0 auto", position: "relative", zIndex: 1 }}>
           <Link to="/profile" style={{
@@ -143,7 +145,7 @@ export default function BillingPage() {
       </section>
 
       {/* ── Content ────────────────────────────────────── */}
-      <div style={{ maxWidth: 800, margin: "0 auto", padding: "32px 40px 80px" }}>
+      <div className="billing-content" style={{ maxWidth: 800, margin: "0 auto", padding: "32px 40px 80px" }}>
 
         {/* ── Current Plan Card ─────────────────────────── */}
         <div style={{
@@ -180,7 +182,7 @@ export default function BillingPage() {
           </div>
 
           {/* Plan features summary */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 24, position: "relative", zIndex: 1 }}>
+          <div className="billing-plan-features" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 24, position: "relative", zIndex: 1 }}>
             {[
               { label: "Compiles/day", value: `${plan.compilesPerDay}`, icon: <Zap size={14} /> },
               { label: "Training jobs/mo", value: `${plan.trainingJobsPerMonth}`, icon: <Cpu size={14} /> },
@@ -229,7 +231,7 @@ export default function BillingPage() {
             <Shield size={18} color="#9D27DE" />
             <h2 style={{ fontSize: 16, fontWeight: 700, color: "#F2F2F0", margin: 0 }}>Usage This Period</h2>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div className="billing-usage-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <UsageBar label="Compiles Today" used={usage.compilesToday} max={plan.compilesPerDay} color="#3B82F6" icon={<Zap size={12} />} />
             <UsageBar label="Compiles This Month" used={usage.compilesThisMonth} max={plan.compilesPerMonth} color="#22C55E" icon={<BarChart3 size={12} />} />
             <UsageBar label="Training Jobs" used={usage.trainingJobsThisMonth} max={plan.trainingJobsPerMonth} color="#9D27DE" icon={<Cpu size={12} />} />
@@ -250,7 +252,7 @@ export default function BillingPage() {
             <CreditCard size={18} color="#9D27DE" />
             <h2 style={{ fontSize: 16, fontWeight: 700, color: "#F2F2F0", margin: 0 }}>Available Plans</h2>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+          <div className="billing-tiers-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
             {PLAN_ORDER.map((pid, i) => {
               const p = PLANS[pid];
               const active = pid === currentPlan;
@@ -311,7 +313,7 @@ export default function BillingPage() {
         flexWrap: "wrap", gap: 16,
       }}>
         <span style={{ fontFamily: "Superstar, fantasy", fontSize: 16, color: "#9D27DE" }}>BITBLOCK</span>
-        <div style={{ display: "flex", gap: 24 }}>
+        <div className="footer-links" style={{ display: "flex", gap: 24 }}>
           {[
             { label: "Terms", to: "/terms" },
             { label: "Privacy", to: "/privacy" },

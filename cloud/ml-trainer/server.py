@@ -446,19 +446,46 @@ def predict():
 
         input_shape = input_details[0]["shape"]
         input_dtype = input_details[0]["dtype"]
-        in_scale, in_zero_point = input_details[0].get("quantization", (0.0, 0))
-        out_scale, out_zero_point = output_details[0].get("quantization", (0.0, 0))
+
+        # Quantization parameters: (scale, zero_point)
+        # TFLite stores these in the "quantization" tuple; newer versions use
+        # "quantization_parameters" dict.  Handle both gracefully.
+        in_quant = input_details[0].get("quantization_parameters") or {}
+        in_scale = float((in_quant.get("scales") or [0.0])[0]) if in_quant else 0.0
+        in_zero_point = int((in_quant.get("zero_points") or [0])[0]) if in_quant else 0
+        if in_scale == 0.0:
+            # Fallback to legacy tuple
+            legacy = input_details[0].get("quantization", (0.0, 0))
+            in_scale = float(legacy[0]) if legacy and legacy[0] else 0.0
+            in_zero_point = int(legacy[1]) if legacy and len(legacy) > 1 else 0
+
+        out_quant = output_details[0].get("quantization_parameters") or {}
+        out_scale = float((out_quant.get("scales") or [0.0])[0]) if out_quant else 0.0
+        out_zero_point = int((out_quant.get("zero_points") or [0])[0]) if out_quant else 0
+        if out_scale == 0.0:
+            legacy = output_details[0].get("quantization", (0.0, 0))
+            out_scale = float(legacy[0]) if legacy and legacy[0] else 0.0
+            out_zero_point = int(legacy[1]) if legacy and len(legacy) > 1 else 0
 
         if data_type in ("image", "image_fomo"):
             img = Image.open(uploaded.stream).convert("RGB")
             target_h, target_w = int(input_shape[1]), int(input_shape[2])
             img = img.resize((target_w, target_h), Image.BILINEAR)
             arr = np.array(img, dtype=np.float32) / 255.0
+
             if input_dtype == np.int8:
-                if in_scale and in_scale > 0:
-                    arr = np.round(arr / in_scale + in_zero_point).astype(np.int8)
+                if in_scale > 0:
+                    # Proper affine quantization: q = round(float_val / scale) + zero_point
+                    arr = np.clip(np.round(arr / in_scale + in_zero_point), -128, 127).astype(np.int8)
                 else:
-                    arr = (arr * 255 - 128).astype(np.int8)
+                    # Common convention: model trained on [0,1] floats, scale ≈ 1/255
+                    # Map [0,1] → [-128,127] via (val * 255 - 128)
+                    arr = np.clip(np.round(arr * 255.0 - 128.0), -128, 127).astype(np.int8)
+            elif input_dtype == np.uint8:
+                if in_scale > 0:
+                    arr = np.clip(np.round(arr / in_scale + in_zero_point), 0, 255).astype(np.uint8)
+                else:
+                    arr = np.clip(np.round(arr * 255.0), 0, 255).astype(np.uint8)
             arr = np.expand_dims(arr, axis=0)
         else:
             raw = uploaded.read().decode("utf-8").strip()
@@ -467,21 +494,29 @@ def predict():
             values = (values + [0.0] * flat_size)[:flat_size]
             arr = np.array(values, dtype=np.float32).reshape(input_shape)
             if input_dtype == np.int8:
-                if in_scale and in_scale > 0:
-                    arr = np.round(arr / in_scale + in_zero_point).astype(np.int8)
+                if in_scale > 0:
+                    arr = np.clip(np.round(arr / in_scale + in_zero_point), -128, 127).astype(np.int8)
                 else:
                     arr = arr.astype(np.int8)
+            elif input_dtype == np.uint8:
+                if in_scale > 0:
+                    arr = np.clip(np.round(arr / in_scale + in_zero_point), 0, 255).astype(np.uint8)
+                else:
+                    arr = arr.astype(np.uint8)
 
         interpreter.set_tensor(input_details[0]["index"], arr)
         interpreter.invoke()
         raw_out = interpreter.get_tensor(output_details[0]["index"])
         output = raw_out[0] if getattr(raw_out, "ndim", 0) > 0 else raw_out
 
-        if output_details[0]["dtype"] == np.int8:
-            if out_scale and out_scale > 0:
+        # Dequantize INT8/UINT8 output
+        out_dtype = output_details[0]["dtype"]
+        if out_dtype in (np.int8, np.uint8):
+            if out_scale > 0:
                 output = (output.astype(np.float32) - out_zero_point) * out_scale
             else:
-                output = output.astype(np.float32)
+                # No quantization params — treat as raw float approximation
+                output = output.astype(np.float32) / 255.0
 
         output = output.astype(np.float32)
 
@@ -526,13 +561,34 @@ def predict():
             })
 
         output = output.astype(float)
-        # Softmax if not already (image classification heads)
-        if output.min() < 0 or output.sum() < 0.5:
-            exp_o = np.exp(output - np.max(output))
-            output = exp_o / exp_o.sum()
+        flat_output = np.reshape(output, (-1,))
+
+        # Determine if softmax needs to be applied.
+        # Proper softmax outputs sum to ~1.0 and are all non-negative.
+        # Only re-apply softmax if the output is clearly logits (large negatives,
+        # or values that don't look like probabilities at all).
+        needs_softmax = False
+        out_sum = float(np.sum(flat_output))
+        out_min = float(np.min(flat_output))
+        if out_min < -0.1:
+            # Definitely logits (strong negatives)
+            needs_softmax = True
+        elif out_sum < 0.01 or out_sum > 2.0:
+            # Sum is way off from 1.0 — probably logits or un-normalized
+            needs_softmax = True
+
+        if needs_softmax:
+            exp_o = np.exp(flat_output - np.max(flat_output))
+            flat_output = exp_o / (exp_o.sum() + 1e-10)
+        else:
+            # Clamp small negative rounding artifacts to 0
+            flat_output = np.clip(flat_output, 0.0, None)
+            s = flat_output.sum()
+            if s > 0:
+                flat_output = flat_output / s  # Re-normalize
 
         predictions = []
-        for i, conf in enumerate(np.reshape(output, (-1,))):
+        for i, conf in enumerate(flat_output):
             label = labels[i] if i < len(labels) else f"class_{i}"
             predictions.append({"label": label, "confidence": round(float(conf), 4)})
         predictions.sort(key=lambda x: x["confidence"], reverse=True)

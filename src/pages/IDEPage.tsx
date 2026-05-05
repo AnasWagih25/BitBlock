@@ -222,7 +222,12 @@ export default function IDEPage() {
   useEffect(() => {
     // @ts-ignore
     setFlashSupported("serial" in navigator);
-  }, []);
+
+    if (window.innerWidth <= 768) {
+      alert("The IDE canvas is not supported on mobile screens. Please use a desktop browser to view and edit your projects.")
+        .then(() => navigate("/dashboard"));
+    }
+  }, [navigate, alert]);
 
   // Auto-sync ML task & architecture when board changes
   useEffect(() => {

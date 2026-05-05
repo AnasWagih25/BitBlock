@@ -9,6 +9,7 @@ import CassetteMascot from "../components/ui/CassetteMascot";
 import { useUsage } from "../hooks/useUsage";
 import { PLANS, PLAN_ORDER, getSuggestedUpgradePlan } from "../lib/plans";
 import { Edit2, Crown, Wrench, FolderOpen, Puzzle, Camera, Zap, Shield, Globe, ExternalLink, ArrowUpRight } from "lucide-react";
+import MobileMenuButton from "../components/ui/MobileMenuButton";
 
 export default function ProfilePage() {
   const { user, signOut, updateUserProfile, userPlan, isAdmin, isBetaMode } = useAuth();
@@ -126,7 +127,7 @@ export default function ProfilePage() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#0A0A0A", fontFamily: "Space Grotesk, sans-serif" }}>
+    <div data-page="profile" style={{ minHeight: "100vh", background: "#0A0A0A", fontFamily: "Space Grotesk, sans-serif" }}>
       {/* ── Nav ── */}
       <nav className="glass-dark" style={{
         position: "sticky", top: 0, zIndex: 100, height: 64, display: "flex", alignItems: "center",
@@ -136,7 +137,8 @@ export default function ProfilePage() {
           <Link to="/dashboard" style={{ textDecoration: "none" }}>
             <span style={{ fontFamily: "Superstar, fantasy", fontSize: 28, color: "#9D27DE" }}>BIT<span style={{ color: "#F2F2F0" }}>BLOCK</span></span>
           </Link>
-          <div style={{ display: "flex", gap: 4 }}>
+          <MobileMenuButton targetId="profile-nav-links" />
+          <div id="profile-nav-links" className="nav-links" style={{ display: "flex", gap: 4 }}>
             {[{ label: "Projects", to: "/dashboard" }, { label: "Marketplace", to: "/marketplace" }, ...(!isBetaMode ? [{ label: "Pricing", to: "/pricing" }] : [])].map((item) => (
               <Link key={item.label} to={item.to} className="btn-ghost">{item.label}</Link>
             ))}
@@ -153,11 +155,11 @@ export default function ProfilePage() {
       ) : (
         <>
           {/* ── Hero Header ── */}
-          <section className="grid-bg" style={{ position: "relative", overflow: "hidden", padding: "48px 40px 40px" }}>
+          <section className="grid-bg profile-hero" style={{ position: "relative", overflow: "hidden", padding: "48px 40px 40px" }}>
             <div style={{ position: "absolute", top: "-15%", left: "15%", width: 450, height: 450, borderRadius: "50%", background: "radial-gradient(circle, rgba(157,39,222,0.15) 0%, transparent 70%)", filter: "blur(50px)", pointerEvents: "none" }} />
             <div style={{ position: "absolute", bottom: "-10%", right: "10%", width: 300, height: 300, borderRadius: "50%", background: "radial-gradient(circle, rgba(185,79,240,0.08) 0%, transparent 70%)", filter: "blur(40px)", pointerEvents: "none" }} />
 
-            <div style={{ maxWidth: 900, margin: "0 auto", display: "flex", gap: 32, alignItems: "center", position: "relative", zIndex: 1 }}>
+            <div className="profile-hero-inner" style={{ maxWidth: 900, margin: "0 auto", display: "flex", gap: 32, alignItems: "center", position: "relative", zIndex: 1 }}>
               {/* Avatar */}
               <div style={{ position: "relative", flexShrink: 0 }}>
                 <div style={{
@@ -189,7 +191,7 @@ export default function ProfilePage() {
                   {profile?.displayName || user?.displayName || "BitBuilder"}
                 </h1>
                 <p style={{ fontSize: 14, color: "rgba(242,242,240,0.4)", margin: "4px 0 12px" }}>{user?.email}</p>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <div className="profile-badges" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 12px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: `${plan.color}20`, color: plan.color, border: `1px solid ${plan.color}40`, textTransform: "uppercase", letterSpacing: "0.05em" }}>
                     <Zap size={11} /> {plan.name}
                   </span>
@@ -208,9 +210,9 @@ export default function ProfilePage() {
             </div>
           </section>
 
-          <div style={{ maxWidth: 900, margin: "0 auto", padding: "32px 40px 64px" }}>
+          <div className="profile-content" style={{ maxWidth: 900, margin: "0 auto", padding: "32px 40px 64px" }}>
             {/* ── Stats ── */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 24 }}>
+            <div className="profile-stats-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 24 }}>
               {[
                 { label: "Projects", value: profile?.projectCount || 0, icon: <FolderOpen size={22} color="#9D27DE" />, color: "#9D27DE" },
                 { label: "Published Blocks", value: profile?.publishedBlocks || 0, icon: <Puzzle size={22} color="#3B82F6" />, color: "#3B82F6" },
@@ -234,7 +236,7 @@ export default function ProfilePage() {
             </div>
 
             {/* ── Two-column: Subscription + Usage ── */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 24 }}>
+            <div className="profile-two-col" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 24 }}>
               {/* Subscription Card */}
               <div style={{ borderRadius: 16, padding: "24px", border: "1px solid rgba(157,39,222,0.12)", background: "linear-gradient(170deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01))" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
@@ -292,7 +294,7 @@ export default function ProfilePage() {
 
             {/* ── Plan Tier Strip (hidden in beta) ── */}
             {!isBetaMode && (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 24 }}>
+            <div className="profile-plan-strip" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 24 }}>
               {PLAN_ORDER.map((pid) => {
                 const p = PLANS[pid];
                 const active = pid === (userPlan || "free");
@@ -344,7 +346,7 @@ export default function ProfilePage() {
               </div>
 
               {/* Links */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
+              <div className="profile-links-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
                 <div>
                   <label style={{ fontSize: 13, color: "rgba(242,242,240,0.5)", display: "flex", alignItems: "center", gap: 4, marginBottom: 8, fontWeight: 500 }}><Globe size={13} /> Website</label>
                   <input type="text" className="input" value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://your-site.com" />
@@ -358,7 +360,7 @@ export default function ProfilePage() {
               <div style={{ height: 1, background: "linear-gradient(90deg, transparent, rgba(157,39,222,0.15), transparent)", margin: "0 0 20px" }} />
 
               {/* Preferences */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
+              <div className="profile-prefs-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
                 <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", color: "#F2F2F0", fontSize: 13 }}>
                   <input type="checkbox" checked={emailUpdates} onChange={(e) => setEmailUpdates(e.target.checked)} />
                   Email updates for marketplace activity
@@ -374,7 +376,7 @@ export default function ProfilePage() {
               </button>
 
               {/* Footer actions */}
-              <div style={{ marginTop: 28, paddingTop: 20, borderTop: "1px solid rgba(157,39,222,0.1)", display: "flex", gap: 12 }}>
+              <div className="profile-footer-actions" style={{ marginTop: 28, paddingTop: 20, borderTop: "1px solid rgba(157,39,222,0.1)", display: "flex", gap: 12 }}>
                 <Link to="/dashboard" className="btn-secondary" style={{ flex: 1, justifyContent: "center", fontSize: 13 }}>Go to Projects</Link>
                 <button onClick={() => signOut()} className="btn-ghost" style={{ flex: 1, justifyContent: "center", color: "#f87171", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 100 }}>Sign Out</button>
               </div>

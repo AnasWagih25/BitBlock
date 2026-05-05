@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { FileText, Shield, CreditCard, ChevronRight } from "lucide-react";
+import MobileMenuButton from "./MobileMenuButton";
 
 interface LegalSection {
   id: string;
@@ -51,7 +52,7 @@ export default function LegalPageLayout({
   }, [sections]);
 
   return (
-    <div style={{ minHeight: "100vh", background: "#0A0A0A", fontFamily: "Space Grotesk, sans-serif" }}>
+    <div data-page="legal" style={{ minHeight: "100vh", background: "#0A0A0A", fontFamily: "Space Grotesk, sans-serif" }}>
       {/* Nav */}
       <nav className="glass-dark" style={{
         position: "sticky", top: 0, zIndex: 100, padding: "0 40px", height: 64,
@@ -64,7 +65,8 @@ export default function LegalPageLayout({
               BIT<span style={{ color: "#F2F2F0" }}>BLOCK</span>
             </span>
           </Link>
-          <div style={{ display: "flex", gap: 4 }}>
+          <MobileMenuButton targetId="legal-nav-links" />
+          <div id="legal-nav-links" className="nav-links" style={{ display: "flex", gap: 4 }}>
             {user && <Link to="/dashboard" className="btn-ghost">Projects</Link>}
             <Link to="/marketplace" className="btn-ghost">Marketplace</Link>
             <Link to="/pricing" className="btn-ghost">Pricing</Link>
@@ -87,7 +89,7 @@ export default function LegalPageLayout({
       </nav>
 
       {/* Hero */}
-      <section className="grid-bg" style={{
+      <section className="grid-bg legal-hero" style={{
         padding: "60px 40px 40px", textAlign: "center", position: "relative", overflow: "hidden",
       }}>
         <div style={{
@@ -114,9 +116,9 @@ export default function LegalPageLayout({
       </section>
 
       {/* Content */}
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "40px 40px 80px", display: "grid", gridTemplateColumns: "220px 1fr", gap: 40 }}>
+      <div className="legal-content" style={{ maxWidth: 1100, margin: "0 auto", padding: "40px 40px 80px", display: "grid", gridTemplateColumns: "220px 1fr", gap: 40 }}>
         {/* TOC Sidebar */}
-        <aside style={{ position: "sticky", top: 88, alignSelf: "start" }}>
+        <aside className="legal-sidebar" style={{ position: "sticky", top: 88, alignSelf: "start" }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(242,242,240,0.35)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>
             On this page
           </div>
@@ -201,7 +203,7 @@ export default function LegalPageLayout({
         display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16,
       }}>
         <span style={{ fontFamily: "Superstar, fantasy", fontSize: 16, color: "#9D27DE" }}>BITBLOCK</span>
-        <div style={{ display: "flex", gap: 24 }}>
+        <div className="footer-links" style={{ display: "flex", gap: 24 }}>
           {legalPages.map((l) => (
             <Link key={l.to} to={l.to} style={{
               color: l.to === currentPath ? "#9D27DE" : "rgba(242,242,240,0.4)",

@@ -16,7 +16,12 @@ function monthStr() {
 }
 
 function initAdmin() {
-  if (!admin.apps.length) admin.initializeApp();
+  if (!admin.apps.length) {
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
+  }
   return admin.firestore();
 }
 

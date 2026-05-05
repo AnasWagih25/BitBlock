@@ -6,6 +6,7 @@ import { useAppDialog } from "../contexts/DialogContext";
 import { auth } from "../lib/firebase";
 import { Check, ChevronDown, Zap, Shield, Cpu, BarChart3, HardDrive, Rocket, FlaskConical } from "lucide-react";
 import { BETA_PLAN } from "../lib/plans";
+import MobileMenuButton from "../components/ui/MobileMenuButton";
 
 /* ── FAQ Data ─────────────────────────────────────────────── */
 const faqs = [
@@ -260,14 +261,15 @@ export default function PricingPage() {
   /* ── Beta Mode Full Page ─────────────────────────────── */
   if (isBetaMode) {
     return (
-      <div style={{ minHeight: "100vh", background: "#0A0A0A", fontFamily: "Space Grotesk, sans-serif" }}>
+      <div data-page="pricing" style={{ minHeight: "100vh", background: "#0A0A0A", fontFamily: "Space Grotesk, sans-serif" }}>
         {/* Nav */}
         <nav className="glass-dark" style={{ position: "sticky", top: 0, zIndex: 100, padding: "0 40px", height: 64, display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid rgba(157,39,222,0.15)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 32 }}>
             <Link to={user ? "/dashboard" : "/"} style={{ textDecoration: "none" }}>
               <span style={{ fontFamily: "Superstar, fantasy", fontSize: 28, color: "#9D27DE" }}>BIT<span style={{ color: "#F2F2F0" }}>BLOCK</span></span>
             </Link>
-            <div style={{ display: "flex", gap: 4 }}>
+            <MobileMenuButton targetId="beta-pricing-nav" />
+            <div id="beta-pricing-nav" className="nav-links" style={{ display: "flex", gap: 4 }}>
               {user && <Link to="/dashboard" className="btn-ghost">Projects</Link>}
               {user && <Link to="/marketplace" className="btn-ghost">Marketplace</Link>}
               {isAdmin && <Link to="/admin" className="btn-ghost" style={{ color: "#F59E0B" }}>Admin</Link>}
@@ -289,7 +291,7 @@ export default function PricingPage() {
         </nav>
 
         {/* Hero */}
-        <section className="grid-bg" style={{ position: "relative", overflow: "hidden", textAlign: "center", padding: "120px 40px 80px" }}>
+        <section className="grid-bg beta-hero" style={{ position: "relative", overflow: "hidden", textAlign: "center", padding: "120px 40px 80px" }}>
           <div style={{ position: "absolute", top: "-10%", left: "20%", width: 500, height: 500, borderRadius: "50%", background: "radial-gradient(circle, rgba(245,158,11,0.15) 0%, transparent 70%)", filter: "blur(60px)", pointerEvents: "none" }} />
           <div style={{ position: "absolute", bottom: "0%", right: "10%", width: 350, height: 350, borderRadius: "50%", background: "radial-gradient(circle, rgba(157,39,222,0.12) 0%, transparent 70%)", filter: "blur(50px)", pointerEvents: "none" }} />
 
@@ -306,7 +308,7 @@ export default function PricingPage() {
             </p>
 
             {/* Beta Plan Card */}
-            <div style={{ maxWidth: 420, margin: "0 auto", borderRadius: 24, border: "1.5px solid rgba(245,158,11,0.4)", background: "linear-gradient(170deg, rgba(245,158,11,0.12) 0%, rgba(16,4,24,0.95) 50%)", boxShadow: "0 24px 60px rgba(245,158,11,0.15)", padding: "36px 32px", position: "relative", overflow: "hidden", textAlign: "left" }}>
+            <div className="beta-card" style={{ maxWidth: 420, margin: "0 auto", borderRadius: 24, border: "1.5px solid rgba(245,158,11,0.4)", background: "linear-gradient(170deg, rgba(245,158,11,0.12) 0%, rgba(16,4,24,0.95) 50%)", boxShadow: "0 24px 60px rgba(245,158,11,0.15)", padding: "36px 32px", position: "relative", overflow: "hidden", textAlign: "left" }}>
               <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "linear-gradient(90deg, #F59E0B, #D97706, #F59E0B)" }} />
               <div style={{ position: "absolute", width: 200, height: 200, right: -80, top: -80, borderRadius: "50%", background: "radial-gradient(circle, rgba(245,158,11,0.2), transparent 70%)", pointerEvents: "none" }} />
 
@@ -353,7 +355,7 @@ export default function PricingPage() {
         </section>
 
         {/* Footer */}
-        <footer style={{ padding: "32px 40px", borderTop: "1px solid rgba(157,39,222,0.1)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
+        <footer className="footer-links" style={{ padding: "32px 40px", borderTop: "1px solid rgba(157,39,222,0.1)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
           <span style={{ fontFamily: "Superstar, fantasy", fontSize: 16, color: "#9D27DE" }}>BITBLOCK</span>
           <span style={{ fontSize: 12, color: "rgba(242,242,240,0.25)" }}>© 2026 BitBlock. All rights reserved.</span>
         </footer>
@@ -362,7 +364,7 @@ export default function PricingPage() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "#0A0A0A", fontFamily: "Space Grotesk, sans-serif" }}>
+    <div data-page="pricing" style={{ minHeight: "100vh", background: "#0A0A0A", fontFamily: "Space Grotesk, sans-serif" }}>
 
       {/* ── Nav ─────────────────────────────────────────── */}
       <nav className="glass-dark" style={{
@@ -377,7 +379,8 @@ export default function PricingPage() {
               BIT<span style={{ color: "#F2F2F0" }}>BLOCK</span>
             </span>
           </Link>
-          <div style={{ display: "flex", gap: 4 }}>
+          <MobileMenuButton targetId="pricing-nav-links" />
+          <div id="pricing-nav-links" className="nav-links" style={{ display: "flex", gap: 4 }}>
             {[
               ...(user ? [{ label: "Projects", to: "/dashboard" }, { label: "Marketplace", to: "/marketplace" }] : []),
               { label: "Pricing", to: "/pricing" },
@@ -410,7 +413,7 @@ export default function PricingPage() {
       </nav>
 
       {/* ── Hero Section ────────────────────────────────── */}
-      <section className="grid-bg" style={{
+      <section className="grid-bg pricing-hero" style={{
         position: "relative",
         overflow: "hidden",
         textAlign: "center",
@@ -449,25 +452,25 @@ export default function PricingPage() {
       </section>
 
       {/* ── Plan Cards ──────────────────────────────────── */}
-      <section style={{ padding: "0 40px 80px", position: "relative", zIndex: 1 }}>
-        <div style={{ maxWidth: 1160, margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20, alignItems: "stretch", marginBottom: 60 }}>
+      <section className="plan-cards-section" style={{ padding: "0 40px 80px", position: "relative", zIndex: 1 }}>
+        <div className="plan-cards-grid" style={{ maxWidth: 1160, margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20, alignItems: "stretch", marginBottom: 60 }}>
           {PLAN_ORDER.filter(id => id !== "team").map((id, idx) => renderPlanCard(id, idx))}
         </div>
 
         {/* Teams Section */}
-        <div style={{ maxWidth: 800, margin: "0 auto", textAlign: "center" }}>
+        <div className="team-section" style={{ maxWidth: 800, margin: "0 auto", textAlign: "center" }}>
           <h2 style={{ fontSize: 32, fontWeight: 700, color: "#F2F2F0", margin: "0 0 12px" }}>For Teams & Organizations</h2>
           <p style={{ color: "rgba(242,242,240,0.6)", fontSize: 16, margin: "0 0 32px" }}>
             Scale your development with shared storage, expanded compile limits, and more powerful AI instances.
           </p>
-          <div style={{ display: "flex", justifyContent: "center" }}>
+          <div className="team-card-container" style={{ display: "flex", justifyContent: "center" }}>
             {renderPlanCard("team", 3, { width: "100%", maxWidth: 450 })}
           </div>
         </div>
       </section>
 
       {/* ── Feature Comparison Table ────────────────────── */}
-      <section style={{ padding: "60px 40px 80px" }}>
+      <section className="comparison-section" style={{ padding: "60px 40px 80px" }}>
         <div style={{ maxWidth: 1000, margin: "0 auto" }}>
           <h2 style={{ fontFamily: "Superstar, fantasy", fontSize: "clamp(24px, 3vw, 36px)", letterSpacing: "0.05em", color: "#F2F2F0", textAlign: "center", marginBottom: 8 }}>
             COMPARE <span className="gradient-text">PLANS</span>
@@ -476,7 +479,7 @@ export default function PricingPage() {
             See exactly what each tier includes
           </p>
 
-          <div style={{ borderRadius: 20, border: "1px solid rgba(157,39,222,0.15)", overflow: "hidden", background: "rgba(26,6,40,0.3)" }}>
+          <div className="comparison-table" style={{ borderRadius: 20, border: "1px solid rgba(157,39,222,0.15)", overflow: "hidden", background: "rgba(26,6,40,0.3)" }}>
             {/* Header row */}
             <div style={{ display: "grid", gridTemplateColumns: "1.6fr repeat(4, 1fr)", borderBottom: "1px solid rgba(157,39,222,0.15)", background: "rgba(26,6,40,0.5)" }}>
               <div style={{ padding: "16px 24px", fontSize: 13, fontWeight: 600, color: "rgba(242,242,240,0.4)" }}>Feature</div>
@@ -512,7 +515,7 @@ export default function PricingPage() {
       </section>
 
       {/* ── FAQ Section ─────────────────────────────────── */}
-      <section style={{ padding: "40px 40px 80px" }}>
+      <section className="faq-section" style={{ padding: "40px 40px 80px" }}>
         <div style={{ maxWidth: 700, margin: "0 auto" }}>
           <h2 style={{ fontFamily: "Superstar, fantasy", fontSize: "clamp(22px, 3vw, 32px)", letterSpacing: "0.05em", color: "#F2F2F0", textAlign: "center", marginBottom: 8 }}>
             FREQUENTLY <span className="gradient-text">ASKED</span>
@@ -527,7 +530,7 @@ export default function PricingPage() {
       </section>
 
       {/* ── CTA Banner ──────────────────────────────────── */}
-      <section style={{ padding: "0 40px 100px" }}>
+      <section className="cta-section" style={{ padding: "0 40px 100px" }}>
         <div style={{
           maxWidth: 800, margin: "0 auto",
           background: "linear-gradient(135deg, rgba(157,39,222,0.15), rgba(42,10,61,0.8))",
@@ -558,7 +561,7 @@ export default function PricingPage() {
         flexWrap: "wrap", gap: 16,
       }}>
         <span style={{ fontFamily: "Superstar, fantasy", fontSize: 16, color: "#9D27DE" }}>BITBLOCK</span>
-        <div style={{ display: "flex", gap: 24 }}>
+        <div className="footer-links" style={{ display: "flex", gap: 24 }}>
           {[
             { label: "Terms", to: "/terms" },
             { label: "Privacy", to: "/privacy" },

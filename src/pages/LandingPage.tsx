@@ -4,6 +4,7 @@ import { useAuth } from "../contexts/AuthContext";
 import CassetteMascot from "../components/ui/CassetteMascot";
 import { Zap, Puzzle, CloudLightning, Usb, Cpu, Globe } from "lucide-react";
 import DemoModal from "../components/ui/DemoModal";
+import MobileMenuButton from "../components/ui/MobileMenuButton";
 
 const features = [
   {
@@ -72,7 +73,7 @@ export default function LandingPage() {
   }, []);
 
   return (
-    <div style={{ background: "#0A0A0A", minHeight: "100vh", fontFamily: "Space Grotesk, sans-serif" }}>
+    <div data-page="landing" style={{ background: "#0A0A0A", minHeight: "100vh", fontFamily: "Space Grotesk, sans-serif" }}>
 
       {/* ── Nav ─────────────────────────────────────────── */}
       <nav className="glass-dark" style={{
@@ -86,8 +87,9 @@ export default function LandingPage() {
             BIT<span style={{ color: "#F2F2F0" }}>BLOCK</span>
           </span>
           <span className="badge badge-purple" style={{ marginLeft: 4 }}>BETA</span>
+          <MobileMenuButton targetId="landing-nav-links" />
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div id="landing-nav-links" className="nav-links" style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {!isBetaMode && <Link to="/pricing" className="btn-ghost">Pricing</Link>}
           <Link to="/login" className="btn-ghost">Log In</Link>
           <Link to="/signup" className="btn-primary" style={{ padding: "9px 22px", fontSize: 13 }}>
@@ -97,7 +99,7 @@ export default function LandingPage() {
       </nav>
 
       {/* ── Hero ────────────────────────────────────────── */}
-      <section className="grid-bg" style={{
+      <section className="grid-bg hero-section" style={{
         minHeight: "100vh",
         display: "flex",
         alignItems: "center",
@@ -124,13 +126,13 @@ export default function LandingPage() {
           pointerEvents: "none",
         }} />
 
-        <div style={{
+        <div className="hero-grid" style={{
           maxWidth: 1100, width: "100%",
           display: "grid", gridTemplateColumns: "1fr 1fr",
           gap: 80, alignItems: "center",
         }}>
           {/* Left: Text */}
-          <div className="animate-slide-up">
+          <div className="animate-slide-up hero-text">
             <div className="badge badge-purple" style={{ marginBottom: 24 }}>
               🎛 Visual Firmware Builder
             </div>
@@ -154,7 +156,7 @@ export default function LandingPage() {
               Drag blocks, connect logic, compile in the cloud — then flash your microcontroller
               directly from the browser. Zero installation. Zero IDE. Pure creation.
             </p>
-            <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+            <div className="hero-cta" style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
               <Link to="/signup" className="btn-primary" style={{ fontSize: 15, padding: "14px 32px" }}>
                 {isBetaMode ? "Join the Beta →" : "Start Building Free →"}
               </Link>
@@ -170,7 +172,7 @@ export default function LandingPage() {
             </p>
 
             {/* Board badges */}
-            <div style={{ display: "flex", gap: 10, marginTop: 32, flexWrap: "wrap" }}>
+            <div className="hero-boards" style={{ display: "flex", gap: 10, marginTop: 32, flexWrap: "wrap" }}>
               {boards.map((b) => (
                 <div key={b.name} style={{
                   background: "rgba(26,6,40,0.8)",
@@ -186,7 +188,7 @@ export default function LandingPage() {
           </div>
 
           {/* Right: Mascot + minicard */}
-          <div ref={heroRef} style={{
+          <div ref={heroRef} className="hero-mascot-area" style={{
             display: "flex", flexDirection: "column", alignItems: "center",
             transition: "transform 0.5s cubic-bezier(0.23, 1, 0.32, 1)",
           }}>
@@ -224,8 +226,8 @@ export default function LandingPage() {
       </section>
 
       {/* ── Stats ────────────────────────────────────────── */}
-      <section style={{ padding: "60px 40px", borderTop: "1px solid rgba(157,39,222,0.1)" }}>
-        <div style={{ maxWidth: 900, margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 24 }}>
+      <section className="stats-section" style={{ padding: "60px 40px", borderTop: "1px solid rgba(157,39,222,0.1)" }}>
+        <div className="stats-grid" style={{ maxWidth: 900, margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 24 }}>
           {stats.map((s) => (
             <div key={s.label} style={{ textAlign: "center" }}>
               <div style={{ fontFamily: "Superstar, fantasy", fontSize: 42, color: "#9D27DE", letterSpacing: "0.05em" }}>{s.value}</div>
@@ -236,7 +238,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── Features ─────────────────────────────────────── */}
-      <section style={{ padding: "80px 40px" }}>
+      <section className="features-section" style={{ padding: "80px 40px" }}>
         <div style={{ maxWidth: 1100, margin: "0 auto" }}>
           <div style={{ textAlign: "center", marginBottom: 60 }}>
             <h2 style={{
@@ -251,7 +253,7 @@ export default function LandingPage() {
               No installs. No setup. Just open BitBlock and start building.
             </p>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 24 }}>
+          <div className="features-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 24 }}>
             {features.map((f, i) => (
               <div key={i} className="card" style={{ cursor: "default" }}>
                 <div style={{ fontSize: 32, marginBottom: 16 }}>{f.icon}</div>
@@ -264,8 +266,8 @@ export default function LandingPage() {
       </section>
 
       {/* ── CTA Banner ───────────────────────────────────── */}
-      <section style={{ padding: "80px 40px" }}>
-        <div style={{
+      <section className="cta-section" style={{ padding: "80px 40px" }}>
+        <div className="cta-card" style={{
           maxWidth: 800, margin: "0 auto",
           background: "linear-gradient(135deg, rgba(157,39,222,0.15), rgba(42,10,61,0.8))",
           border: "1px solid rgba(157,39,222,0.3)",
@@ -307,7 +309,7 @@ export default function LandingPage() {
         flexWrap: "wrap", gap: 16,
       }}>
         <span style={{ fontFamily: "Superstar, fantasy", fontSize: 16, color: "#9D27DE" }}>BITBLOCK</span>
-        <div style={{ display: "flex", gap: 24 }}>
+        <div className="footer-links" style={{ display: "flex", gap: 24 }}>
           {[
             { label: "Docs", href: "#" },
             { label: "Marketplace", to: "/marketplace" },

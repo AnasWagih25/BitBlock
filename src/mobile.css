@@ -1,0 +1,545 @@
+/* ══════════════════════════════════════════════════════════════
+   BitBlock — Mobile Responsive Overrides
+   These rules ONLY activate on screens ≤ 768px wide.
+   Desktop layout is completely untouched.
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Mobile Nav: Burger Menu ─────────────────────────────────── */
+.mobile-menu-toggle {
+  display: none;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  color: rgba(242, 242, 240, 0.7);
+  z-index: 110;
+}
+
+/* ── Tablet breakpoint (≤ 1024px) ──────────────────────────── */
+@media (max-width: 1024px) {
+  /* Reduce overall padding for inner pages */
+  [data-page] > div > nav {
+    padding-left: 24px !important;
+    padding-right: 24px !important;
+  }
+}
+
+/* ── Mobile breakpoint (≤ 768px) ───────────────────────────── */
+@media (max-width: 768px) {
+
+  /* ── Mobile Hamburger Visibility ─────────────────────────── */
+  .mobile-menu-toggle {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    position: absolute !important;
+    right: 16px !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+  }
+
+  /* ── NAV: Shared across all pages ──────────────────────────── */
+  /* All navs use glass-dark class */
+  nav.glass-dark {
+    padding: 0 16px !important;
+    height: 56px !important;
+    position: relative !important;
+  }
+
+  /* Nav links container — hide on mobile */
+  .nav-links {
+    display: none !important;
+  }
+
+  /* Mobile dropdown menu */
+  .nav-links.nav-open {
+    display: flex !important;
+    flex-direction: column !important;
+    position: fixed !important;
+    top: 56px !important;
+    left: 0 !important;
+    right: 0 !important;
+    background: rgba(10, 10, 10, 0.98) !important;
+    backdrop-filter: blur(24px) !important;
+    -webkit-backdrop-filter: blur(24px) !important;
+    border-bottom: 1px solid rgba(157, 39, 222, 0.25) !important;
+    padding: 12px 16px !important;
+    gap: 4px !important;
+    z-index: 99 !important;
+    animation: slide-down-mobile 0.25s ease forwards;
+  }
+
+  .nav-links.nav-open .btn-ghost,
+  .nav-links.nav-open a {
+    width: 100% !important;
+    justify-content: flex-start !important;
+    padding: 12px 16px !important;
+    border-radius: 10px !important;
+    font-size: 15px !important;
+  }
+
+  .nav-links.nav-open .btn-ghost:hover,
+  .nav-links.nav-open a:hover {
+    background: rgba(157, 39, 222, 0.12) !important;
+  }
+
+  /* Nav right side actions — simplify */
+  .nav-actions {
+    gap: 8px !important;
+    margin-right: 36px !important;
+  }
+
+  .nav-actions .btn-secondary {
+    padding: 5px 12px !important;
+    font-size: 11px !important;
+  }
+
+  .nav-actions > span,
+  .nav-actions a span {
+    display: none !important;
+  }
+
+  /* ── LANDING PAGE ──────────────────────────────────────────── */
+  [data-page="landing"] .hero-grid {
+    grid-template-columns: 1fr !important;
+    gap: 40px !important;
+    text-align: center !important;
+  }
+
+  [data-page="landing"] .hero-section {
+    padding: 100px 20px 48px !important;
+    min-height: auto !important;
+  }
+
+  [data-page="landing"] .hero-text {
+    align-items: center !important;
+  }
+
+  [data-page="landing"] .hero-text p {
+    max-width: 100% !important;
+  }
+
+  [data-page="landing"] .hero-cta {
+    justify-content: center !important;
+  }
+
+  [data-page="landing"] .hero-boards {
+    justify-content: center !important;
+  }
+
+  [data-page="landing"] .hero-mascot-area {
+    display: none !important;
+  }
+
+  [data-page="landing"] .stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 16px !important;
+  }
+
+  [data-page="landing"] .stats-section {
+    padding: 40px 20px !important;
+  }
+
+  [data-page="landing"] .features-section {
+    padding: 48px 20px !important;
+  }
+
+  [data-page="landing"] .features-grid {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+
+  [data-page="landing"] .cta-section {
+    padding: 48px 20px !important;
+  }
+
+  [data-page="landing"] .cta-card {
+    padding: 40px 24px !important;
+    border-radius: 16px !important;
+  }
+
+  /* ── FOOTER — All pages ─────────────────────────────────────── */
+  footer {
+    flex-direction: column !important;
+    align-items: center !important;
+    text-align: center !important;
+    padding: 24px 20px !important;
+    gap: 12px !important;
+  }
+
+  .footer-links {
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+    gap: 16px !important;
+  }
+
+  /* ── DASHBOARD PAGE ────────────────────────────────────────── */
+  [data-page="dashboard"] .dashboard-content {
+    padding: 24px 16px !important;
+  }
+
+  [data-page="dashboard"] .dashboard-header {
+    padding: 20px !important;
+    border-radius: 16px !important;
+  }
+
+  [data-page="dashboard"] .dashboard-header-inner {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 16px !important;
+  }
+
+  [data-page="dashboard"] .dashboard-header-actions {
+    width: 100% !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+  }
+
+  [data-page="dashboard"] .dashboard-header-actions input {
+    width: 100% !important;
+  }
+
+  [data-page="dashboard"] .projects-grid {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+
+  /* ── AUTH PAGES (Login / Signup) ─────────────────────────── */
+  [data-page="login"],
+  [data-page="signup"] {
+    flex-direction: column !important;
+  }
+
+  [data-page="login"] .auth-branding,
+  [data-page="signup"] .auth-branding {
+    display: none !important;
+  }
+
+  [data-page="login"] .auth-form,
+  [data-page="signup"] .auth-form {
+    width: 100% !important;
+    padding: 32px 20px !important;
+    min-height: 100vh;
+    justify-content: flex-start !important;
+    padding-top: 48px !important;
+  }
+
+  [data-page="login"] .auth-form > div,
+  [data-page="signup"] .auth-form > div {
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  /* ── PRICING PAGE ──────────────────────────────────────────── */
+  [data-page="pricing"] .pricing-hero {
+    padding: 80px 20px 40px !important;
+  }
+
+  [data-page="pricing"] .plan-cards-grid {
+    grid-template-columns: 1fr !important;
+    gap: 20px !important;
+  }
+
+  [data-page="pricing"] .plan-cards-section {
+    padding: 0 16px 48px !important;
+  }
+
+  [data-page="pricing"] .team-section {
+    text-align: center !important;
+  }
+
+  [data-page="pricing"] .team-card-container {
+    justify-content: stretch !important;
+  }
+
+  [data-page="pricing"] .team-card-container > div {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  [data-page="pricing"] .comparison-section {
+    padding: 40px 16px 48px !important;
+  }
+
+  [data-page="pricing"] .comparison-table {
+    overflow-x: auto !important;
+  }
+
+  [data-page="pricing"] .comparison-table > div {
+    min-width: 600px !important;
+  }
+
+  [data-page="pricing"] .faq-section {
+    padding: 24px 16px 48px !important;
+  }
+
+  [data-page="pricing"] .cta-section {
+    padding: 0 16px 64px !important;
+  }
+
+  [data-page="pricing"] .cta-section > div {
+    padding: 40px 24px !important;
+  }
+
+  /* Beta pricing */
+  [data-page="pricing"] .beta-hero {
+    padding: 80px 20px 48px !important;
+  }
+
+  [data-page="pricing"] .beta-card {
+    max-width: 100% !important;
+    padding: 28px 24px !important;
+  }
+
+  /* ── MARKETPLACE PAGE ──────────────────────────────────────── */
+  [data-page="marketplace"] .marketplace-hero {
+    padding: 32px 16px !important;
+  }
+
+  [data-page="marketplace"] .marketplace-hero-inner {
+    flex-direction: column !important;
+    gap: 20px !important;
+    align-items: flex-start !important;
+  }
+
+  [data-page="marketplace"] .marketplace-search-bar {
+    width: 100% !important;
+    flex-direction: column !important;
+    padding: 8px !important;
+  }
+
+  [data-page="marketplace"] .marketplace-search-bar input {
+    width: 100% !important;
+  }
+
+  [data-page="marketplace"] .marketplace-search-bar select {
+    width: 100% !important;
+  }
+
+  [data-page="marketplace"] .marketplace-body {
+    flex-direction: column !important;
+    padding: 24px 16px !important;
+    gap: 24px !important;
+  }
+
+  [data-page="marketplace"] .marketplace-sidebar {
+    width: 100% !important;
+    position: static !important;
+  }
+
+  [data-page="marketplace"] .marketplace-sidebar > div {
+    position: static !important;
+  }
+
+  /* Make categories horizontal on mobile */
+  [data-page="marketplace"] .marketplace-categories {
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+  }
+
+  [data-page="marketplace"] .marketplace-categories button {
+    padding: 6px 12px !important;
+    font-size: 12px !important;
+    border-left: none !important;
+    border-radius: 999px !important;
+    border: 1px solid rgba(157, 39, 222, 0.2) !important;
+  }
+
+  [data-page="marketplace"] .marketplace-blocks-grid {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+
+  /* ── PROFILE PAGE ──────────────────────────────────────────── */
+  [data-page="profile"] .profile-hero {
+    padding: 32px 16px !important;
+  }
+
+  [data-page="profile"] .profile-hero-inner {
+    flex-direction: column !important;
+    text-align: center !important;
+    gap: 16px !important;
+  }
+
+  [data-page="profile"] .profile-hero-inner .profile-badges {
+    justify-content: center !important;
+  }
+
+  [data-page="profile"] .profile-content {
+    padding: 24px 16px 48px !important;
+  }
+
+  [data-page="profile"] .profile-stats-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  [data-page="profile"] .profile-two-col {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+
+  [data-page="profile"] .profile-plan-strip {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  [data-page="profile"] .profile-links-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-page="profile"] .profile-prefs-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-page="profile"] .profile-footer-actions {
+    flex-direction: column !important;
+  }
+
+  /* ── BILLING PAGE ──────────────────────────────────────────── */
+  [data-page="billing"] .billing-hero {
+    padding: 32px 16px !important;
+  }
+
+  [data-page="billing"] .billing-content {
+    padding: 24px 16px 48px !important;
+  }
+
+  [data-page="billing"] .billing-plan-features {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  [data-page="billing"] .billing-usage-grid {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  [data-page="billing"] .billing-tiers-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+  }
+
+  /* ── LEGAL PAGES (Terms, Privacy, Refund) ────────────────── */
+  [data-page="legal"] .legal-content {
+    grid-template-columns: 1fr !important;
+    padding: 24px 16px 48px !important;
+    gap: 0 !important;
+  }
+
+  [data-page="legal"] .legal-sidebar {
+    display: none !important;
+  }
+
+  [data-page="legal"] .legal-hero {
+    padding: 40px 20px 24px !important;
+  }
+
+  /* ── IDE PAGE ──────────────────────────────────────────────── */
+  .ide-layout {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: 56px 1fr 32px !important;
+  }
+
+  .ide-sidebar {
+    display: none !important;
+  }
+
+  .ide-panel {
+    display: none !important;
+  }
+
+  .ide-canvas {
+    grid-column: 1 !important;
+  }
+
+  [data-page="ide"] .ide-mobile-notice {
+    display: flex !important;
+  }
+
+  /* ── ADMIN PAGE ────────────────────────────────────────────── */
+  [data-page="admin"] .admin-content {
+    padding: 24px 16px !important;
+  }
+
+  /* ── SHARED: Cards ─────────────────────────────────────────── */
+  .card {
+    padding: 20px !important;
+    border-radius: 16px !important;
+  }
+
+  /* ── SHARED: Buttons ───────────────────────────────────────── */
+  .btn-primary,
+  .btn-secondary {
+    font-size: 13px !important;
+    padding: 10px 20px !important;
+  }
+
+  /* ── SHARED: Glass containers ──────────────────────────────── */
+  .glass,
+  .glass-dark {
+    border-radius: 12px !important;
+  }
+
+  /* ── SHARED: Badge ─────────────────────────────────────────── */
+  .badge {
+    font-size: 10px !important;
+    padding: 2px 8px !important;
+  }
+
+  /* ── Modal overrides ───────────────────────────────────────── */
+  [data-page="dashboard"] .modal-content {
+    width: calc(100vw - 32px) !important;
+    padding: 28px 20px !important;
+    border-radius: 20px !important;
+    max-height: 90vh !important;
+    overflow-y: auto !important;
+  }
+}
+
+/* ── Extra-small phones (≤ 480px) ──────────────────────────── */
+@media (max-width: 480px) {
+  nav.glass-dark {
+    padding: 0 12px !important;
+  }
+
+  [data-page="landing"] .hero-section {
+    padding: 88px 16px 40px !important;
+  }
+
+  [data-page="landing"] .stats-grid {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  [data-page="pricing"] .billing-tiers-grid,
+  [data-page="billing"] .billing-tiers-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-page="profile"] .profile-plan-strip {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ── Animation ───────────────────────────────────────────────── */
+@keyframes slide-down-mobile {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── IDE Mobile Notice (hidden on desktop) ──────────────────── */
+.ide-mobile-notice {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 48px 24px;
+  gap: 16px;
+}

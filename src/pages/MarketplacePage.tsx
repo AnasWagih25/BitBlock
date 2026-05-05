@@ -5,6 +5,7 @@ import { CheckCircle2, Star, Search, Puzzle, Download, Trash2, Settings, Chevron
 import { collection, getDocs, query, orderBy, doc, setDoc, updateDoc, increment, deleteDoc, getDoc, runTransaction } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import CassetteMascot from "../components/ui/CassetteMascot";
+import MobileMenuButton from "../components/ui/MobileMenuButton";
 
 const CATEGORIES = ["All", "GPIO", "Sensors", "Display", "Communication", "ML / AI", "Actuators", "Networking"];
 
@@ -416,7 +417,7 @@ export default function MarketplacePage() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#0A0A0A", fontFamily: "Space Grotesk, sans-serif" }}>
+    <div data-page="marketplace" style={{ minHeight: "100vh", background: "#0A0A0A", fontFamily: "Space Grotesk, sans-serif" }}>
       {/* Toast notification */}
       {toast && (
         <div style={{
@@ -443,7 +444,8 @@ export default function MarketplacePage() {
               BIT<span style={{ color: "#F2F2F0" }}>BLOCK</span>
             </span>
           </Link>
-          <div style={{ display: "flex", gap: 4 }}>
+          <MobileMenuButton targetId="marketplace-nav-links" />
+          <div id="marketplace-nav-links" className="nav-links" style={{ display: "flex", gap: 4 }}>
             {[
               { label: "Projects", to: "/dashboard" },
               { label: "Marketplace", to: "/marketplace" },
@@ -463,7 +465,7 @@ export default function MarketplacePage() {
             )}
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div className="nav-actions" style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <Link to="/profile" style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none" }} className="hover:opacity-80 transition-opacity">
             {user?.photoURL ? (
               <img
@@ -488,7 +490,7 @@ export default function MarketplacePage() {
       </nav>
 
       {/* Hero */}
-      <div style={{
+      <div className="marketplace-hero" style={{
         padding: "60px 40px", borderBottom: "1px solid rgba(157,39,222,0.1)",
         position: "relative", overflow: "hidden",
         background: "linear-gradient(180deg, rgba(157,39,222,0.05) 0%, transparent 100%)"
@@ -498,7 +500,7 @@ export default function MarketplacePage() {
           background: "radial-gradient(circle, rgba(157,39,222,0.15) 0%, transparent 70%)",
           filter: "blur(60px)", pointerEvents: "none",
         }} />
-        <div style={{ maxWidth: 1200, margin: "0 auto", position: "relative", display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+        <div className="marketplace-hero-inner" style={{ maxWidth: 1200, margin: "0 auto", position: "relative", display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
           <div style={{ maxWidth: 600 }}>
             <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 999, background: "rgba(157,39,222,0.1)", border: "1px solid rgba(157,39,222,0.2)", color: "#B94FF0", fontSize: 12, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 16 }}>
               <Puzzle size={14} /> Community Marketplace
@@ -512,7 +514,7 @@ export default function MarketplacePage() {
           </div>
 
           {/* Search Bar - Moved to right side of hero */}
-          <div style={{ display: "flex", gap: 12, alignItems: "center", background: "rgba(0,0,0,0.3)", padding: 8, borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)" }}>
+          <div className="marketplace-search-bar" style={{ display: "flex", gap: 12, alignItems: "center", background: "rgba(0,0,0,0.3)", padding: 8, borderRadius: 16, border: "1px solid rgba(255,255,255,0.05)" }}>
             <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
               <Search size={18} color="rgba(242,242,240,0.4)" style={{ position: "absolute", left: 16 }} />
               <input
@@ -538,9 +540,9 @@ export default function MarketplacePage() {
         </div>
       </div>
 
-      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "40px", display: "flex", gap: 40 }}>
+      <div className="marketplace-body" style={{ maxWidth: 1200, margin: "0 auto", padding: "40px", display: "flex", gap: 40 }}>
         {/* Sidebar */}
-        <div style={{ width: 220, flexShrink: 0 }}>
+        <div className="marketplace-sidebar" style={{ width: 220, flexShrink: 0 }}>
           <div style={{ position: "sticky", top: 100 }}>
             <p style={{ fontSize: 12, fontWeight: 700, color: "rgba(242,242,240,0.4)", letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 16 }}>Views</p>
             <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 32 }}>
@@ -583,7 +585,7 @@ export default function MarketplacePage() {
             </div>
 
             <p style={{ fontSize: 12, fontWeight: 700, color: "rgba(242,242,240,0.4)", letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 16 }}>Categories</p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <div className="marketplace-categories" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               {CATEGORIES.map((cat) => (
                 <button
                   key={cat}
@@ -662,7 +664,7 @@ export default function MarketplacePage() {
               </p>
             </div>
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 24 }}>
+            <div className="marketplace-blocks-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 24 }}>
               {visibleBlocks.map((block) => renderBlockCard(block))}
             </div>
           )}

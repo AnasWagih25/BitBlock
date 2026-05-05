@@ -64,9 +64,11 @@ export function getAutoMLPreset(task: MLTask, board: BoardConfig): AutoMLPreset 
     hyperparameters.batch_size = Math.min(Number(base.batch_size) || 16, 24);
   }
   if (architecture === "face_recognition") {
-    hyperparameters.batch_size = Math.min(Number(base.batch_size) || 16, 16);
-    hyperparameters.epochs = Math.max(40, Number(base.epochs) || 40);
+    hyperparameters.batch_size = Math.min(Number(base.batch_size) || 12, 12);
+    hyperparameters.epochs = Math.max(80, Number(base.epochs) || 80);
+    hyperparameters.learning_rate = 0.0005;
     hyperparameters.embedding_dim = 64;
+    hyperparameters.fine_tune_epochs = Math.max(10, Number(base.fine_tune_epochs) || 10);
   }
   if (architecture === "autoencoder_tiny") {
     hyperparameters.epochs = Math.max(35, Number(base.epochs) || 35);

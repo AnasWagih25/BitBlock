@@ -9,6 +9,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { Shield, FolderOpen, Plus, Trash2, Cpu, Clock, Layers } from "lucide-react";
 import { useAppDialog } from "../contexts/DialogContext";
 import CassetteMascot from "../components/ui/CassetteMascot";
+import MobileMenuButton from "../components/ui/MobileMenuButton";
 
 interface Project {
   id: string;
@@ -23,7 +24,7 @@ import { BOARDS } from "../boards/registry";
 
 export default function Dashboard() {
   const { user, signOut, isAdmin, isBetaMode } = useAuth();
-  const { confirm } = useAppDialog();
+  const { confirm, alert } = useAppDialog();
   const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -103,6 +104,22 @@ export default function Dashboard() {
     setProjects((p) => p.filter((x) => x.id !== id));
   };
 
+  const handleNewProjectClick = (e: React.MouseEvent) => {
+    if (window.innerWidth <= 768) {
+      e.preventDefault();
+      alert("Creating projects is not supported on mobile devices. Please use a desktop browser to build firmware.");
+    } else {
+      setShowNew(true);
+    }
+  };
+
+  const handleProjectClick = (e: React.MouseEvent) => {
+    if (window.innerWidth <= 768) {
+      e.preventDefault();
+      alert("The IDE canvas is not supported on mobile screens. Please use a desktop browser to view and edit your projects.");
+    }
+  };
+
   const filtered = projects.filter((p) =>
     p.name.toLowerCase().includes(search.toLowerCase())
   );
@@ -118,7 +135,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#0A0A0A", fontFamily: "Space Grotesk, sans-serif" }}>
+    <div data-page="dashboard" style={{ minHeight: "100vh", background: "#0A0A0A", fontFamily: "Space Grotesk, sans-serif" }}>
 
       {/* Top nav */}
       <nav className="glass-dark" style={{
@@ -131,7 +148,8 @@ export default function Dashboard() {
           <span style={{ fontFamily: "Superstar, fantasy", fontSize: 28, color: "#9D27DE" }}>
             BIT<span style={{ color: "#F2F2F0" }}>BLOCK</span>
           </span>
-          <div style={{ display: "flex", gap: 4 }}>
+          <MobileMenuButton targetId="dashboard-nav-links" />
+          <div id="dashboard-nav-links" className="nav-links" style={{ display: "flex", gap: 4 }}>
             {[
               { label: "Projects", to: "/dashboard" },
               { label: "Marketplace", to: "/marketplace" },
@@ -151,7 +169,7 @@ export default function Dashboard() {
             )}
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div className="nav-actions" style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <Link to="/profile" style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none" }} className="hover:opacity-80 transition-opacity">
             {user?.photoURL ? (
               <img src={user.photoURL} style={{ width: 32, height: 32, borderRadius: "50%", border: "2px solid rgba(157,39,222,0.5)", objectFit: "cover" }} alt="avatar" />
@@ -171,9 +189,9 @@ export default function Dashboard() {
         </div>
       </nav>
 
-      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "48px 40px" }}>
+      <div className="dashboard-content" style={{ maxWidth: 1200, margin: "0 auto", padding: "48px 40px" }}>
         {/* Header Section */}
-        <div style={{ 
+        <div className="dashboard-header" style={{ 
           marginBottom: 40, 
           position: "relative",
           padding: "32px 40px",
@@ -193,7 +211,7 @@ export default function Dashboard() {
             pointerEvents: "none"
           }} />
           
-          <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", position: "relative", zIndex: 1 }}>
+          <div className="dashboard-header-inner" style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", position: "relative", zIndex: 1 }}>
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
                 <FolderOpen size={28} color="#9D27DE" />
@@ -206,7 +224,7 @@ export default function Dashboard() {
               </p>
             </div>
             
-            <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+            <div className="dashboard-header-actions" style={{ display: "flex", gap: 16, alignItems: "center" }}>
                {projects.length > 0 && (
                 <input
                   id="project-search"
@@ -220,7 +238,7 @@ export default function Dashboard() {
               )}
               <button
                 id="new-project-btn"
-                onClick={() => setShowNew(true)}
+                onClick={handleNewProjectClick}
                 className="btn-primary"
                 style={{ padding: "10px 24px", fontSize: 14, display: "flex", alignItems: "center", gap: 8 }}
               >
@@ -238,7 +256,7 @@ export default function Dashboard() {
             background: "rgba(0,0,0,0.8)", backdropFilter: "blur(12px)",
             display: "flex", alignItems: "center", justifyContent: "center",
           }} onClick={() => setShowNew(false)}>
-            <div className="glass-dark" style={{
+            <div className="modal-content glass-dark" style={{
               borderRadius: 24, padding: 40, width: 460,
               animation: "slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
               border: "1px solid rgba(157,39,222,0.3)",
@@ -318,12 +336,12 @@ export default function Dashboard() {
             <p style={{ color: "rgba(242,242,240,0.5)", fontSize: 15, marginTop: 8, marginBottom: 32, maxWidth: 400, lineHeight: 1.6 }}>
               Create your first project to start building firmware visually with blocks.
             </p>
-            <button onClick={() => setShowNew(true)} className="btn-primary" style={{ padding: "12px 28px", fontSize: 15 }}>
+            <button onClick={handleNewProjectClick} className="btn-primary" style={{ padding: "12px 28px", fontSize: 15 }}>
               Create First Project
             </button>
           </div>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 24 }}>
+          <div className="projects-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 24 }}>
             {filtered.map((p) => {
               const boardColor = BOARDS.find((b) => b.id === p.board)?.color || "#9D27DE";
               return (
@@ -332,6 +350,7 @@ export default function Dashboard() {
                   to={`/ide/${p.id}`}
                   id={`project-card-${p.id}`}
                   style={{ textDecoration: "none" }}
+                  onClick={handleProjectClick}
                 >
                   <div className="card" style={{ 
                     cursor: "pointer", 
