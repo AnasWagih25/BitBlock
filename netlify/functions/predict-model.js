@@ -29,7 +29,8 @@ exports.handler = async (event) => {
         "Content-Type": contentType,
         ...(apiKey ? { "X-API-Key": apiKey } : {}),
       },
-      body: bodyBuffer,
+      // Native fetch requires Blob or Uint8Array, raw Buffer corrupts multipart
+      body: new Blob([bodyBuffer], { type: contentType }),
     });
 
     const responseText = await upstream.text();

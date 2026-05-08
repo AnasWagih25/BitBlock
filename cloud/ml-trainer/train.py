@@ -357,24 +357,50 @@ def compute_class_weights(y_one_hot):
 
 # ── Model Builders ───────────────────────────────────────────────
 
-def build_mobilenet_v1(input_shape, num_classes, alpha=0.25, learning_rate=0.001, dropout=0.35):
+class CosineAnnealingSchedule(keras.callbacks.Callback):
+    """Cosine annealing LR schedule with warm restarts."""
+    def __init__(self, initial_lr, total_epochs, min_lr=1e-6):
+        super().__init__()
+        self.initial_lr = initial_lr
+        self.total_epochs = max(1, total_epochs)
+        self.min_lr = min_lr
+    def on_epoch_begin(self, epoch, logs=None):
+        progress = epoch / self.total_epochs
+        lr = self.min_lr + 0.5 * (self.initial_lr - self.min_lr) * (1 + np.cos(np.pi * progress))
+        try:
+            self.model.optimizer.learning_rate.assign(lr)
+        except AttributeError:
+            tf.keras.backend.set_value(self.model.optimizer.lr, lr)
+
+
+def _build_augmentation_layers(aug_level="strong", is_face=False):
+    """Build augmentation layers based on strength level."""
+    aug = [layers.RandomFlip("horizontal")]
+    if aug_level == "none":
+        return aug
+    aug.append(layers.RandomRotation(0.10 if is_face else 0.08))
+    if aug_level == "strong":
+        aug.append(layers.RandomZoom((-0.15, 0.15)))
+        aug.append(layers.RandomBrightness(factor=0.15))
+        aug.append(layers.RandomContrast(factor=0.15))
+        if is_face:
+            aug.append(layers.GaussianNoise(0.05))
+    return aug
+
+
+def build_mobilenet_v1(input_shape, num_classes, alpha=0.25, learning_rate=0.001, dropout=0.35, augmentation="strong"):
     """MobileNetV1 transfer learning for image classification."""
     weights_val = "imagenet" if alpha in [0.25, 0.5, 0.75, 1.0] else None
     base = keras.applications.MobileNet(
-        input_shape=input_shape,
-        alpha=alpha,
-        include_top=False,
-        weights=weights_val,
+        input_shape=input_shape, alpha=alpha, include_top=False, weights=weights_val,
     )
-    # Freeze base layers for transfer learning if we loaded weights
     if weights_val == "imagenet":
         for layer in base.layers:
             layer.trainable = False
-
+    aug_layers = _build_augmentation_layers(augmentation)
     model = keras.Sequential([
         keras.Input(shape=input_shape),
-        layers.RandomFlip("horizontal"),
-        layers.RandomRotation(0.06),
+        *aug_layers,
         base,
         layers.GlobalAveragePooling2D(),
         layers.Dropout(dropout),
@@ -382,7 +408,61 @@ def build_mobilenet_v1(input_shape, num_classes, alpha=0.25, learning_rate=0.001
     ])
     model.compile(
         optimizer=keras.optimizers.Adam(learning_rate=learning_rate),
-        loss=keras.losses.CategoricalCrossentropy(label_smoothing=0.03),
+        loss=keras.losses.CategoricalCrossentropy(label_smoothing=0.05),
+        metrics=["accuracy"],
+    )
+    return model
+
+
+def build_mobilenet_v2(input_shape, num_classes, alpha=0.35, learning_rate=0.001, dropout=0.35, augmentation="strong"):
+    """MobileNetV2 transfer learning — better accuracy than V1 at same size."""
+    weights_val = "imagenet" if alpha in [0.35, 0.5, 0.75, 1.0] else None
+    base = keras.applications.MobileNetV2(
+        input_shape=input_shape, alpha=alpha, include_top=False, weights=weights_val,
+    )
+    if weights_val == "imagenet":
+        for layer in base.layers:
+            layer.trainable = False
+    aug_layers = _build_augmentation_layers(augmentation)
+    model = keras.Sequential([
+        keras.Input(shape=input_shape),
+        *aug_layers,
+        base,
+        layers.GlobalAveragePooling2D(),
+        layers.Dense(128, activation="relu"),
+        layers.BatchNormalization(),
+        layers.Dropout(dropout),
+        layers.Dense(num_classes, activation="softmax"),
+    ])
+    model.compile(
+        optimizer=keras.optimizers.Adam(learning_rate=learning_rate),
+        loss=keras.losses.CategoricalCrossentropy(label_smoothing=0.05),
+        metrics=["accuracy"],
+    )
+    return model
+
+
+def build_efficientnet_lite0(input_shape, num_classes, learning_rate=0.001, dropout=0.4, augmentation="strong"):
+    """EfficientNet-Lite0 — highest accuracy option for boards with >1MB model budget."""
+    base = keras.applications.EfficientNetB0(
+        input_shape=input_shape, include_top=False, weights="imagenet",
+    )
+    for layer in base.layers:
+        layer.trainable = False
+    aug_layers = _build_augmentation_layers(augmentation)
+    model = keras.Sequential([
+        keras.Input(shape=input_shape),
+        *aug_layers,
+        base,
+        layers.GlobalAveragePooling2D(),
+        layers.Dense(128, activation="relu"),
+        layers.BatchNormalization(),
+        layers.Dropout(dropout),
+        layers.Dense(num_classes, activation="softmax"),
+    ])
+    model.compile(
+        optimizer=keras.optimizers.Adam(learning_rate=learning_rate),
+        loss=keras.losses.CategoricalCrossentropy(label_smoothing=0.05),
         metrics=["accuracy"],
     )
     return model
@@ -419,24 +499,77 @@ def build_fomo(input_shape, num_classes, learning_rate=0.001, dropout=0.25):
     return model
 
 
-def build_1d_cnn(input_length, num_classes, learning_rate=0.001, dropout=0.25):
-    """1D CNN for IMU gesture recognition or MFCC audio classification."""
-    model = keras.Sequential([
-        keras.Input(shape=(input_length,)),
-        layers.Reshape((-1, 1)),
-        layers.Conv1D(8, 3, activation="relu", padding="same"),
-        layers.MaxPooling1D(2),
-        layers.Conv1D(16, 3, activation="relu", padding="same"),
-        layers.MaxPooling1D(2),
-        layers.SeparableConv1D(32, 3, activation="relu", padding="same"),
-        layers.GlobalAveragePooling1D(),
-        layers.Dense(32, activation="relu"),
-        layers.Dropout(dropout),
-        layers.Dense(num_classes, activation="softmax"),
-    ])
+def build_ssd_mobilenet_v2(input_shape, num_classes, learning_rate=0.001, dropout=0.35):
+    """
+    FOMO-style model using MobileNetV2 as the feature extractor.
+    """
+    base = keras.applications.MobileNetV2(
+        input_shape=input_shape, alpha=0.35, include_top=False, weights="imagenet",
+    )
+    # block_6_expand_relu has shape 12x12 for 96x96 inputs (stride 8)
+    try:
+        out_layer = base.get_layer("block_6_expand_relu").output
+    except ValueError:
+        out_layer = base.layers[-1].output
+        
+    extractor = keras.Model(inputs=base.input, outputs=out_layer)
+    for layer in extractor.layers:
+        layer.trainable = False
+        
+    inputs = keras.Input(shape=input_shape)
+    x = layers.RandomFlip("horizontal")(inputs)
+    x = extractor(x)
+    x = layers.Dropout(dropout)(x)
+    outputs = layers.Conv2D(num_classes, 1, activation="sigmoid", padding="same")(x)
+    
+    model = keras.Model(inputs, outputs)
+    try:
+        focal = keras.losses.BinaryFocalCrossentropy(gamma=2.0, alpha=0.25, from_logits=False)
+    except Exception:
+        focal = keras.losses.BinaryCrossentropy()
     model.compile(
         optimizer=keras.optimizers.Adam(learning_rate=learning_rate),
-        loss=keras.losses.CategoricalCrossentropy(label_smoothing=0.02),
+        loss=focal,
+        metrics=[keras.metrics.BinaryAccuracy(threshold=0.35, name="binary_accuracy")],
+    )
+    return model
+
+
+def build_1d_cnn(input_length, num_classes, learning_rate=0.001, dropout=0.25):
+    """Deeper 1D CNN with residual connections for IMU/audio."""
+    inputs = keras.Input(shape=(input_length,))
+    x = layers.Reshape((-1, 1))(inputs)
+    x = layers.GaussianNoise(0.02)(x)
+    x = layers.Conv1D(16, 3, activation="relu", padding="same")(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.MaxPooling1D(2)(x)
+    # Residual block 1
+    r = x
+    x = layers.Conv1D(32, 3, activation="relu", padding="same")(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.Conv1D(32, 3, padding="same")(x)
+    x = layers.BatchNormalization()(x)
+    r = layers.Conv1D(32, 1, padding="same")(r)
+    x = layers.Add()([x, r])
+    x = layers.ReLU()(x)
+    x = layers.MaxPooling1D(2)(x)
+    # Residual block 2
+    r = x
+    x = layers.SeparableConv1D(48, 3, activation="relu", padding="same")(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.SeparableConv1D(48, 3, padding="same")(x)
+    x = layers.BatchNormalization()(x)
+    r = layers.Conv1D(48, 1, padding="same")(r)
+    x = layers.Add()([x, r])
+    x = layers.ReLU()(x)
+    x = layers.GlobalAveragePooling1D()(x)
+    x = layers.Dense(48, activation="relu")(x)
+    x = layers.Dropout(dropout)(x)
+    outputs = layers.Dense(num_classes, activation="softmax")(x)
+    model = keras.Model(inputs, outputs)
+    model.compile(
+        optimizer=keras.optimizers.Adam(learning_rate=learning_rate),
+        loss=keras.losses.CategoricalCrossentropy(label_smoothing=0.03),
         metrics=["accuracy"],
     )
     return model
@@ -449,6 +582,7 @@ def build_ds_cnn(input_length, num_classes, learning_rate=0.001, dropout=0.25):
     """
     inputs = keras.Input(shape=(input_length,))
     x = layers.Reshape((-1, 1))(inputs)
+    x = layers.GaussianNoise(0.02)(x)
 
     # Initial standard convolution
     x = layers.Conv1D(16, 5, activation="relu", padding="same")(x)
@@ -622,6 +756,10 @@ def convert_to_tflite(model, X_representative=None):
         converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
         converter.inference_input_type = tf.int8
         converter.inference_output_type = tf.int8
+        
+        # Ensure conversion doesn't fail if INT8 cannot be used for some ops
+        # It's better to fallback to float for those ops than completely fail
+        converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8, tf.lite.OpsSet.TFLITE_BUILTINS]
 
     try:
         tflite_model = converter.convert()
@@ -663,14 +801,17 @@ const unsigned int {var_name}_len = {len(tflite_bytes)};
 # ── Main Training Entry Point ────────────────────────────────────
 
 ARCH_CONFIG = {
-    "mobilenet_v1":      {"data": "image",   "res": (96, 96)},
-    "face_recognition":  {"data": "image",   "res": (96, 96)},
-    "fomo":              {"data": "image_fomo", "res": (96, 96), "grid_stride": 8},
-    "cnn_1d_mfcc":       {"data": "sensor",  "window": 50},
-    "ds_cnn":            {"data": "sensor",  "window": 50},
-    "cnn_1d_imu":        {"data": "sensor",  "window": 50},
-    "autoencoder":       {"data": "anomaly", "window": 50},
-    "autoencoder_tiny":  {"data": "anomaly", "window": 50},
+    "mobilenet_v1":       {"data": "image",      "res": (96, 96)},
+    "mobilenet_v2":       {"data": "image",      "res": (96, 96)},
+    "efficientnet_lite0": {"data": "image",      "res": (96, 96)},
+    "face_recognition":   {"data": "image",      "res": (96, 96)},
+    "fomo":               {"data": "image_fomo", "res": (96, 96), "grid_stride": 8},
+    "ssd_mobilenet_v2":   {"data": "image_fomo", "res": (96, 96), "grid_stride": 8},
+    "cnn_1d_mfcc":        {"data": "sensor",     "window": 50},
+    "ds_cnn":             {"data": "sensor",     "window": 50},
+    "cnn_1d_imu":         {"data": "sensor",     "window": 50},
+    "autoencoder":        {"data": "anomaly",    "window": 50},
+    "autoencoder_tiny":   {"data": "anomaly",    "window": 50},
 }
 
 
@@ -702,16 +843,28 @@ def run_training(samples, labels, architecture, task, bucket, on_epoch=None, on_
         res = config.get("res", (96, 96))
         X, y, sample_meta = load_image_samples(samples, labels, target_size=res)
         input_shape = (*res, 3)
+        aug_level = str(hyperparams.get("augmentation", "strong"))
         if architecture == "face_recognition":
             embedding_dim = int(hyperparams.get("embedding_dim", 64))
             model = build_face_recognition(
                 input_shape, num_classes, embedding_dim=embedding_dim,
                 learning_rate=learning_rate, dropout=dropout
             )
+        elif architecture == "efficientnet_lite0":
+            model = build_efficientnet_lite0(
+                input_shape, num_classes, learning_rate=learning_rate,
+                dropout=dropout, augmentation=aug_level
+            )
+        elif architecture == "mobilenet_v2":
+            alpha = float(hyperparams.get("alpha", 0.35))
+            model = build_mobilenet_v2(
+                input_shape, num_classes, alpha=alpha,
+                learning_rate=learning_rate, dropout=dropout, augmentation=aug_level
+            )
         elif architecture == "mobilenet_v1":
             alpha = float(hyperparams.get("alpha", 0.25))
             model = build_mobilenet_v1(
-                input_shape, num_classes, alpha=alpha, learning_rate=learning_rate, dropout=dropout
+                input_shape, num_classes, alpha=alpha, learning_rate=learning_rate, dropout=dropout, augmentation=aug_level
             )
         else:
             raise ValueError(f"No image model builder for: {architecture}")
@@ -721,7 +874,10 @@ def run_training(samples, labels, architecture, task, bucket, on_epoch=None, on_
         stride = int(config.get("grid_stride", 8))
         X, y, sample_meta, grid_hw = load_fomo_samples(samples, labels, target_size=res, grid_stride=stride)
         input_shape = (*res, 3)
-        model = build_fomo(input_shape, num_classes, learning_rate=learning_rate, dropout=dropout)
+        if architecture == "ssd_mobilenet_v2":
+            model = build_ssd_mobilenet_v2(input_shape, num_classes, learning_rate=learning_rate, dropout=dropout)
+        else:
+            model = build_fomo(input_shape, num_classes, learning_rate=learning_rate, dropout=dropout)
         print(f"[Train] FOMO grid {grid_hw[0]}×{grid_hw[1]}, heatmap y: {y.shape}")
 
     elif data_type == "sensor":
@@ -808,23 +964,17 @@ def run_training(samples, labels, architecture, task, bucket, on_epoch=None, on_
 
     # Face recognition needs more patience to converge with aggressive augmentation
     es_patience = 15 if architecture == "face_recognition" else 10
-    lr_patience = 5 if architecture == "face_recognition" else 4
-    callbacks = [
-        ProgressCallback(),
-        keras.callbacks.ReduceLROnPlateau(
-            monitor="val_loss",
-            factor=0.5,
-            patience=lr_patience,
-            min_lr=1e-6,
-            verbose=0,
-        ),
-        keras.callbacks.EarlyStopping(
-            monitor="val_loss",
-            patience=es_patience,
-            restore_best_weights=True,
-            verbose=0,
-        ),
-    ]
+    lr_schedule = str(hyperparams.get("lr_schedule", "cosine"))
+    callbacks = [ProgressCallback()]
+    if lr_schedule == "cosine":
+        callbacks.append(CosineAnnealingSchedule(learning_rate, epochs))
+    else:
+        callbacks.append(keras.callbacks.ReduceLROnPlateau(
+            monitor="val_loss", factor=0.5, patience=4, min_lr=1e-6, verbose=0,
+        ))
+    callbacks.append(keras.callbacks.EarlyStopping(
+        monitor="val_loss", patience=es_patience, restore_best_weights=True, verbose=0,
+    ))
     class_weight = (
         None
         if data_type in ("anomaly", "image_fomo")
@@ -845,10 +995,10 @@ def run_training(samples, labels, architecture, task, bucket, on_epoch=None, on_
     )
 
     # Fine-tuning for transfer learning models
-    if architecture in ("mobilenet_v1", "face_recognition") and fine_tune_epochs > 0:
+    if architecture in ("mobilenet_v1", "mobilenet_v2", "efficientnet_lite0", "face_recognition", "ssd_mobilenet_v2") and fine_tune_epochs > 0:
         base_model = None
         for layer in model.layers:
-            if isinstance(layer, keras.Model) and "mobilenet" in layer.name.lower():
+            if isinstance(layer, keras.Model) and any(k in layer.name.lower() for k in ["mobilenet", "efficientnet"]):
                 base_model = layer
                 break
         if base_model is not None:
@@ -874,7 +1024,7 @@ def run_training(samples, labels, architecture, task, bucket, on_epoch=None, on_
                 keras.callbacks.ReduceLROnPlateau(
                     monitor="val_loss",
                     factor=0.5,
-                    patience=lr_patience,
+                    patience=4,
                     min_lr=1e-6,
                     verbose=0,
                 ),

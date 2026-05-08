@@ -54,14 +54,14 @@ export const BOARDS: BoardConfig[] = [
     ble: true,
     camera: true,
     mlSupport: true,
-    maxModelSizeKb: 2000,
+    maxModelSizeKb: 3000,
     supportedMLTasks: ["gesture", "motion_anomaly", "keyword_spotting", "sound", "sensor_anomaly", "image_classification", "object_detection", "face_recognition"]
   },
   {
     id: "esp32-cam",
     name: "ESP32-CAM",
     flash: 4096,
-    ram: 520,
+    ram: 320,
     psram: 4096,
     platform: "esp32",
     fqbn: "esp32:esp32:esp32cam",
@@ -104,7 +104,7 @@ export const BOARDS: BoardConfig[] = [
     camera: false,
     mlSupport: true,
     maxModelSizeKb: 150,
-    supportedMLTasks: ["sensor_anomaly", "motion_anomaly", "keyword_spotting"]
+    supportedMLTasks: ["sensor_anomaly", "motion_anomaly", "keyword_spotting", "gesture", "sound"]
   },
   {
     id: "arduino-uno-r3",
@@ -137,7 +137,7 @@ export const BOARDS: BoardConfig[] = [
     ble: false,
     camera: false,
     mlSupport: true,
-    maxModelSizeKb: 60,
+    maxModelSizeKb: 40,
     supportedMLTasks: ["sensor_anomaly", "motion_anomaly"]
   },
   {
@@ -164,7 +164,7 @@ export const BOARDS: BoardConfig[] = [
     flash: 16384,
     ram: 512,
     psram: 0,
-    platform: "arduino",
+    platform: "esp32",
     fqbn: "arduino:esp32:nano_nora",
     color: "#6B46C1",
     wifi: true,
@@ -172,7 +172,7 @@ export const BOARDS: BoardConfig[] = [
     camera: false,
     mlSupport: true,
     maxModelSizeKb: 600,
-    supportedMLTasks: ["gesture", "motion_anomaly", "keyword_spotting", "sound", "sensor_anomaly"]
+    supportedMLTasks: ["gesture", "motion_anomaly", "keyword_spotting", "sound", "sensor_anomaly", "image_classification"]
   },
   {
     id: "arduino-mega-2560",

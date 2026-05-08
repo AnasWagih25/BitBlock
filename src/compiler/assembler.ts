@@ -6,7 +6,7 @@ export class ArduinoCompiler {
   private setups: Set<string> = new Set();
   private loops: Set<string> = new Set();
   private isAVR: boolean = false;
-  private boardId: string = '';
+  public boardId: string = '';
   private memoryUsed: number = 0;
 
   public init(boardId: string) {

@@ -73,7 +73,7 @@ export default function IDEPage() {
   const [connectedPort, setConnectedPort] = useState<any>(null);
   const [mlTask, setMlTask] = useState<string>("gesture");
   const [mlArch, setMlArch] = useState<string>("");
-  const [trainedModel, setTrainedModel] = useState<{ blockId: string, arch: string, headerUrl: string, labels: string[] } | null>(null);
+  const [trainedModel, setTrainedModel] = useState<{ blockId: string, arch: string, headerUrl: string, labels: string[], diagnostics?: any } | null>(null);
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const [activeGuide, setActiveGuide] = useState<{ label: string, content: any } | null>(null);
   const [promptDialog, setPromptDialog] = useState<{ message: string, defaultValue: string, callback: (v: string | null) => void } | null>(null);
@@ -308,11 +308,16 @@ export default function IDEPage() {
     const applyJob = (job: Record<string, unknown> | undefined) => {
       if (job?.headerUrl && job?.arch && job?.labels) {
         const arch = String(job.arch);
+        // Extract threshold specifically (C1 fix)
+        const diag = job.diagnostics as Record<string, any>;
+        const threshold = diag?.reconstruction?.threshold_p95;
+        
         setTrainedModel({
           blockId: `ml_model_${arch.toLowerCase().replace(/ /g, "_")}`,
           arch,
           headerUrl: String(job.headerUrl),
           labels: job.labels as string[],
+          diagnostics: threshold !== undefined ? { anomalyThreshold: threshold } : undefined,
         });
       } else {
         setTrainedModel(null);
@@ -423,7 +428,7 @@ export default function IDEPage() {
 
     if (currentModel && blocklyInstance) {
       const archName = ML_ARCHITECTURES[currentModel.arch]?.name || currentModel.arch;
-      generateMLBlock(blocklyInstance, currentModel.arch, archName, currentModel.labels);
+      generateMLBlock(blocklyInstance, currentModel.arch, archName, currentModel.labels, currentModel.diagnostics);
       tb.contents.push({ kind: "sep" } as any);
       tb.contents.push({
         kind: "category",

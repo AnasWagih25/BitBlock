@@ -17,15 +17,32 @@ function getProfile(board: BoardConfig): AutoMLPreset["profile"] {
 
 function getBaseHyperparameters(profile: AutoMLPreset["profile"]): Record<string, number | string> {
   if (profile === "tiny") {
-    return { epochs: 30, batch_size: 16, learning_rate: 0.001, window_size: 32, fine_tune_epochs: 0, alpha: 0.1 };
+    return {
+      epochs: 40, batch_size: 16, learning_rate: 0.001,
+      window_size: 32, fine_tune_epochs: 0, alpha: 0.25,
+      lr_schedule: "cosine", augmentation: "standard",
+    };
   }
   if (profile === "small") {
-    return { epochs: 45, batch_size: 24, learning_rate: 0.001, window_size: 40, fine_tune_epochs: 3, alpha: 0.25 };
+    return {
+      epochs: 60, batch_size: 24, learning_rate: 0.001,
+      window_size: 40, fine_tune_epochs: 4, alpha: 0.25,
+      lr_schedule: "cosine", augmentation: "strong",
+    };
   }
   if (profile === "performance") {
-    return { epochs: 80, batch_size: 48, learning_rate: 0.0005, window_size: 64, fine_tune_epochs: 8, alpha: 0.75 };
+    return {
+      epochs: 100, batch_size: 48, learning_rate: 0.0005,
+      window_size: 64, fine_tune_epochs: 12, alpha: 0.75,
+      lr_schedule: "cosine", augmentation: "strong",
+    };
   }
-  return { epochs: 60, batch_size: 32, learning_rate: 0.0008, window_size: 50, fine_tune_epochs: 5, alpha: 0.5 };
+  // balanced
+  return {
+    epochs: 80, batch_size: 32, learning_rate: 0.0008,
+    window_size: 50, fine_tune_epochs: 6, alpha: 0.5,
+    lr_schedule: "cosine", augmentation: "strong",
+  };
 }
 
 function pickArchitecture(task: MLTask, board: BoardConfig): string {
@@ -37,18 +54,24 @@ function pickArchitecture(task: MLTask, board: BoardConfig): string {
   });
 
   if (eligible.length === 0) {
-    return supportedByTask[0] || "";
+    return ""; // Return empty to force validation error instead of giving an impossible model
   }
 
-  // Prefer stronger models when the board has headroom.
+  // Prefer the strongest model that fits
+  if (task === "image_classification") {
+    if (eligible.includes("efficientnet_lite0")) return "efficientnet_lite0";
+    if (eligible.includes("mobilenet_v2")) return "mobilenet_v2";
+    if (eligible.includes("mobilenet_v1")) return "mobilenet_v1";
+  }
+  if (task === "object_detection") {
+    if (eligible.includes("ssd_mobilenet_v2") && board.psram > 0) return "ssd_mobilenet_v2";
+    if (eligible.includes("fomo")) return "fomo";
+  }
   if ((task === "motion_anomaly" || task === "sensor_anomaly") && eligible.includes("autoencoder")) {
     return board.maxModelSizeKb >= 30 ? "autoencoder" : "autoencoder_tiny";
   }
-  if (task === "keyword_spotting" && eligible.includes("ds_cnn")) return "ds_cnn";
-  if (task === "image_classification" && eligible.includes("mobilenet_v1")) return "mobilenet_v1";
+  if ((task === "keyword_spotting" || task === "sound") && eligible.includes("ds_cnn")) return "ds_cnn";
   if (task === "face_recognition" && eligible.includes("face_recognition")) return "face_recognition";
-  if (task === "object_detection" && eligible.includes("fomo")) return "fomo";
-  if (task === "sound" && eligible.includes("cnn_1d_mfcc")) return "cnn_1d_mfcc";
   if (task === "gesture" && eligible.includes("cnn_1d_imu")) return "cnn_1d_imu";
   return eligible[0];
 }
@@ -60,8 +83,23 @@ export function getAutoMLPreset(task: MLTask, board: BoardConfig): AutoMLPreset 
 
   const hyperparameters: Record<string, number | string> = { ...base };
 
+  // Architecture-specific tuning
+  if (architecture === "mobilenet_v2") {
+    hyperparameters.alpha = profile === "performance" ? 0.75 : profile === "balanced" ? 0.5 : 0.35;
+    hyperparameters.fine_tune_epochs = Math.max(8, Number(base.fine_tune_epochs) || 8);
+  }
+  if (architecture === "efficientnet_lite0") {
+    hyperparameters.fine_tune_epochs = Math.max(10, Number(base.fine_tune_epochs) || 10);
+    hyperparameters.epochs = Math.max(80, Number(base.epochs) || 80);
+    hyperparameters.batch_size = Math.min(Number(base.batch_size) || 24, 24);
+  }
   if (architecture === "fomo") {
     hyperparameters.batch_size = Math.min(Number(base.batch_size) || 16, 24);
+  }
+  if (architecture === "ssd_mobilenet_v2") {
+    hyperparameters.batch_size = Math.min(Number(base.batch_size) || 12, 16);
+    hyperparameters.epochs = Math.max(100, Number(base.epochs) || 100);
+    hyperparameters.fine_tune_epochs = Math.max(15, Number(base.fine_tune_epochs) || 15);
   }
   if (architecture === "face_recognition") {
     hyperparameters.batch_size = Math.min(Number(base.batch_size) || 12, 12);
@@ -71,11 +109,15 @@ export function getAutoMLPreset(task: MLTask, board: BoardConfig): AutoMLPreset 
     hyperparameters.fine_tune_epochs = Math.max(10, Number(base.fine_tune_epochs) || 10);
   }
   if (architecture === "autoencoder_tiny") {
-    hyperparameters.epochs = Math.max(35, Number(base.epochs) || 35);
+    hyperparameters.epochs = Math.max(40, Number(base.epochs) || 40);
     hyperparameters.batch_size = Math.min(Number(base.batch_size) || 16, 16);
+  }
+  if (architecture === "autoencoder") {
+    hyperparameters.epochs = Math.max(60, Number(base.epochs) || 60);
   }
   if (architecture === "ds_cnn" || architecture === "cnn_1d_mfcc" || architecture === "cnn_1d_imu") {
     hyperparameters.window_size = base.window_size;
+    hyperparameters.augmentation = "standard";
   }
 
   return {
@@ -83,8 +125,7 @@ export function getAutoMLPreset(task: MLTask, board: BoardConfig): AutoMLPreset 
     hyperparameters,
     profile,
     note:
-      `Auto-optimized for ${board.name}: ${profile} profile with ${architecture.replaceAll("_", " ")} ` +
-      `based on flash/RAM budget (~${board.maxModelSizeKb}KB model allowance).`,
+      `Auto-optimized for ${board.name}: ${profile} profile · ${architecture.replaceAll("_", " ")} · ` +
+      `cosine LR · ${String(hyperparameters.augmentation)} augmentation · ~${board.maxModelSizeKb}KB budget`,
   };
 }
-

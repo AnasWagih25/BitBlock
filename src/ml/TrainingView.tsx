@@ -639,7 +639,10 @@ export default function TrainingView({ projectId, boardId, task, setTask, select
               <label style={{ fontSize: 11, color: "rgba(242,242,240,0.5)", display: "block", marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Architecture</label>
               <div style={{ position: 'relative' }}>
                   <select 
-                      value={selectedArch} onChange={(e) => setSelectedArch(e.target.value)}
+                      value={selectedArch} onChange={(e) => {
+                          setSelectedArch(e.target.value);
+                          if (autoOptimize) setAutoOptimize(false);
+                      }}
                       disabled={status === 'training'}
                       style={{ 
                           width: '100%', padding: '10px 12px', fontSize: 13, background: "#0D0018", color: "#F2F2F0", 
