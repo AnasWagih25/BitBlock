@@ -165,7 +165,6 @@ export function generateMLBlock(Blockly: any, architecture: string, modelName: s
   const isIMU = IMU_ARCHS.has(architecture);
   const isFomo = architecture === "fomo";
   const isSSD = architecture === "ssd_mobilenet_v2";
-  const isFace = architecture === "face_recognition";
 
   Blockly.Blocks[blockId] = {
     init() {
