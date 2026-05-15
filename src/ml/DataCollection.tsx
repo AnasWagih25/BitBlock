@@ -921,7 +921,7 @@ export default function DataCollection({ projectId, architecture }: { projectId:
      if (!imageEl) return;
      const renderedWidth = imageEl.clientWidth;
      const renderedHeight = imageEl.clientHeight;
-     const currentCrop = { ...crop };
+     const uiCropState = { ...crop, renderedWidth, renderedHeight };
 
      // 2. Compute next sample to select instantly
      const idx = dataset.findIndex(d => d.id === sample.id);
@@ -948,8 +948,9 @@ export default function DataCollection({ projectId, architecture }: { projectId:
      // 4. Do the heavy lifting async
      try {
        const img = new Image();
+       img.crossOrigin = 'anonymous';
        img.src = sample.url;
-       await new Promise(r => { img.onload = r; });
+       await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; });
 
        const canvas = canvasRef.current;
        canvas.width = res.width;
@@ -957,23 +958,21 @@ export default function DataCollection({ projectId, architecture }: { projectId:
        const ctx = canvas.getContext('2d');
        if (!ctx) throw new Error("No context");
 
-       let currentCrop = sample.savedCrop;
+       let targetCrop = sample.savedCrop;
        let scaleX = 1;
        let scaleY = 1;
 
-       if (!currentCrop) {
-          currentCrop = { ...crop };
-          scaleX = renderedWidth > 0 ? img.naturalWidth / renderedWidth : 1;
-          scaleY = renderedHeight > 0 ? img.naturalHeight / renderedHeight : 1;
-       } else {
-          scaleX = currentCrop.renderedWidth > 0 ? img.naturalWidth / currentCrop.renderedWidth : 1;
-          scaleY = currentCrop.renderedHeight > 0 ? img.naturalHeight / currentCrop.renderedHeight : 1;
+       if (!targetCrop) {
+          targetCrop = uiCropState;
        }
+       
+       scaleX = targetCrop.renderedWidth > 0 ? img.naturalWidth / targetCrop.renderedWidth : 1;
+       scaleY = targetCrop.renderedHeight > 0 ? img.naturalHeight / targetCrop.renderedHeight : 1;
 
-       const srcX = currentCrop.x * scaleX;
-       const srcY = currentCrop.y * scaleY;
-       const srcW = currentCrop.size * scaleX;
-       const srcH = currentCrop.size * scaleY;
+       const srcX = targetCrop.x * scaleX;
+       const srcY = targetCrop.y * scaleY;
+       const srcW = targetCrop.size * scaleX;
+       const srcH = targetCrop.size * scaleY;
 
        const boundedX = Math.max(0, Math.min(srcX, img.naturalWidth - 1));
        const boundedY = Math.max(0, Math.min(srcY, img.naturalHeight - 1));
