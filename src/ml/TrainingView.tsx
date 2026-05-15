@@ -284,7 +284,7 @@ export default function TrainingView({ projectId, boardId, task, setTask, select
       (snap) => {
         const rows: TrainingDatasetOption[] = snap.docs.map((d) => {
           const raw = d.data() as Record<string, unknown>;
-          const name = typeof raw.name === "string" && raw.name.trim() ? raw.name.trim() : "(unnamed)";
+          const name = typeof raw.name === "string" && raw.name.trim() ? raw.name.replace(/Â·/g, '·').replace(/Ã—/g, '×').trim() : "(unnamed)";
           const arch = typeof raw.architecture === "string" ? raw.architecture : undefined;
           return { id: d.id, name, sampleIds: coerceSampleIds(raw.sampleIds), architecture: arch };
         });
@@ -719,6 +719,89 @@ export default function TrainingView({ projectId, boardId, task, setTask, select
                         </div>
                     )}
                 </div>
+
+                {/* ── Dataset Size Recommendation ── */}
+                {currentArch.recommendedSamples && (() => {
+                  const rec = currentArch.recommendedSamples;
+                  const isPerUnit = rec.unit !== "total (normal only)";
+                  // For per-unit metrics, use the smallest class count to determine health
+                  const smallestClassCount = Object.keys(cloudLabels).length > 0
+                    ? Math.min(...Object.values(cloudLabels))
+                    : 0;
+                  const checkCount = isPerUnit ? smallestClassCount : cloudTotal;
+                  const statusColor = checkCount >= rec.recommended
+                    ? "#4ade80"
+                    : checkCount >= rec.min
+                      ? "#f59e0b"
+                      : "#f87171";
+                  const statusLabel = checkCount >= rec.recommended
+                    ? (rec.ideal && checkCount >= rec.ideal ? "Ideal" : "Good")
+                    : checkCount >= rec.min
+                      ? "Minimum met"
+                      : "Insufficient";
+                  const statusIcon = checkCount >= rec.recommended ? "✓" : checkCount >= rec.min ? "⚠" : "✗";
+                  // Progress bar ratio (cap at ideal or 1.2× recommended)
+                  const barMax = rec.ideal || Math.round(rec.recommended * 1.2);
+                  const barPct = Math.min(100, Math.round((checkCount / barMax) * 100));
+
+                  return (
+                    <div style={{
+                      marginTop: 12, padding: 10, borderRadius: 8,
+                      background: "rgba(0,0,0,0.2)", border: `1px solid ${statusColor}22`,
+                    }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                        <span style={{ fontSize: 10, color: "rgba(242,242,240,0.4)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                          Recommended Dataset Size
+                        </span>
+                        <span style={{
+                          fontSize: 10, fontWeight: 700, color: statusColor,
+                          display: "flex", alignItems: "center", gap: 4,
+                          padding: "2px 8px", borderRadius: 999,
+                          background: `${statusColor}15`, border: `1px solid ${statusColor}30`,
+                        }}>
+                          {statusIcon} {statusLabel}
+                        </span>
+                      </div>
+
+                      {/* Threshold bar */}
+                      <div style={{ position: "relative", height: 6, borderRadius: 3, background: "rgba(242,242,240,0.08)", marginBottom: 10, overflow: "hidden" }}>
+                        <div style={{
+                          position: "absolute", left: 0, top: 0, height: "100%", borderRadius: 3,
+                          width: `${barPct}%`,
+                          background: `linear-gradient(90deg, ${statusColor}99, ${statusColor})`,
+                          transition: "width 0.4s ease",
+                        }} />
+                      </div>
+
+                      {/* Threshold labels */}
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4, textAlign: "center" }}>
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: checkCount >= rec.min ? "#4ade80" : "#f87171", fontFamily: "JetBrains Mono, monospace" }}>{rec.min}</span>
+                          <span style={{ fontSize: 9, color: "rgba(242,242,240,0.35)" }}>Minimum</span>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: checkCount >= rec.recommended ? "#4ade80" : "rgba(242,242,240,0.55)", fontFamily: "JetBrains Mono, monospace" }}>{rec.recommended}</span>
+                          <span style={{ fontSize: 9, color: "rgba(242,242,240,0.35)" }}>Recommended</span>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: rec.ideal && checkCount >= rec.ideal ? "#4ade80" : "rgba(242,242,240,0.35)", fontFamily: "JetBrains Mono, monospace" }}>{rec.ideal ?? "—"}</span>
+                          <span style={{ fontSize: 9, color: "rgba(242,242,240,0.35)" }}>Ideal</span>
+                        </div>
+                      </div>
+
+                      {/* Unit + current status */}
+                      <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ fontSize: 10, color: "rgba(242,242,240,0.4)" }}>
+                          Samples <strong style={{ color: "rgba(242,242,240,0.6)" }}>{rec.unit}</strong>
+                        </span>
+                        <span style={{ fontSize: 10, color: "rgba(242,242,240,0.5)", fontFamily: "JetBrains Mono, monospace" }}>
+                          You have: <strong style={{ color: statusColor }}>{checkCount}</strong> {isPerUnit ? `(smallest class)` : "total"}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 <p style={{ fontSize: 10, color: "rgba(242,242,240,0.5)", margin: 0, fontStyle: "italic" }}>
                     {currentArch.recommendedInput === 'Image' ? "Ensure all samples are cropped to 1:1 ratio. Our engine auto-resizes to target resolution." : "Ensure sensor stream is active before starting collection."}
                 </p>

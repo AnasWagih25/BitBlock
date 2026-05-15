@@ -149,7 +149,13 @@ export function defineCommunicationBlocks(Blockly: any) {
     generator.forBlock["http_get_request"] = function(block: any, generator: any) {
       let u = generator.valueToCode(block, 'URL', generator.ORDER_ATOMIC) || '""';
       u = asCppString(u);
-      compiler.addInclude(`#include <HTTPClient.h>\n#include <WiFiClient.h>`);
+      // @ts-ignore
+      const bd = getBoardConfig(compiler.boardId);
+      if (bd.platform === "esp8266") {
+        compiler.addInclude(`#include <ESP8266HTTPClient.h>\n#include <ESP8266WiFi.h>`);
+      } else {
+        compiler.addInclude(`#include <HTTPClient.h>\n#include <WiFiClient.h>`);
+      }
       compiler.addGlobal(`
 String __httpGET(String u) {
   HTTPClient h; WiFiClient c; h.begin(c, u);
@@ -164,7 +170,13 @@ String __httpGET(String u) {
       let p = generator.valueToCode(block, 'PAYLOAD', generator.ORDER_ATOMIC) || '""';
       u = asCppString(u);
       p = asCppString(p);
-      compiler.addInclude(`#include <HTTPClient.h>\n#include <WiFiClient.h>`);
+      // @ts-ignore
+      const bd = getBoardConfig(compiler.boardId);
+      if (bd.platform === "esp8266") {
+        compiler.addInclude(`#include <ESP8266HTTPClient.h>\n#include <ESP8266WiFi.h>`);
+      } else {
+        compiler.addInclude(`#include <HTTPClient.h>\n#include <WiFiClient.h>`);
+      }
       compiler.addGlobal(`
 String __httpPOST(String u, String p) {
   HTTPClient h; WiFiClient c; h.begin(c, u);

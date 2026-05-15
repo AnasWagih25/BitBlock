@@ -179,6 +179,13 @@ int32_t readI2SSample() {
       const pin = generator.valueToCode(block, "PIN", 0) || "0";
       const freq = generator.valueToCode(block, "FREQ", 0) || "440";
       const duration = generator.valueToCode(block, "DURATION", 0) || "1000";
+      // @ts-ignore
+      const bd = getBoardConfig(compiler.boardId);
+      if (bd.platform === "esp32") {
+        // ESP32 does not have native tone(); use LEDC hardware
+        compiler.addGlobal(`\nvoid espTone(int pin, int freq, int dur) {\n  ledcAttach(pin, freq, 8);\n  ledcWrite(pin, 128);\n  delay(dur);\n  ledcWrite(pin, 0);\n  ledcDetach(pin);\n}`);
+        return `espTone(${pin}, ${freq}, ${duration});\n`;
+      }
       return `tone(${pin}, ${freq}, ${duration});\n`;
     };
   }

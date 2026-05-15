@@ -1,4 +1,5 @@
 import { compiler } from "../compiler/assembler";
+import { getBoardConfig } from "../boards/registry";
 
 export function defineMotorBlocks(Blockly: any) {
   const generator = Blockly.JavaScript || Blockly.javascriptGenerator;
@@ -111,7 +112,9 @@ export function defineMotorBlocks(Blockly: any) {
     generator.forBlock["servo_init"] = function(block: any, generator: any) {
       const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '9';
       const pinId = idSafe(pin);
-      compiler.addInclude(`#include <Servo.h>`);
+      // @ts-ignore
+      const bd = getBoardConfig(compiler.boardId);
+      compiler.addInclude(bd.platform === "esp32" ? `#include <ESP32Servo.h>` : `#include <Servo.h>`);
       compiler.addGlobal(`Servo servo_${pinId};`);
       compiler.addSetup(`servo_${pinId}.attach(${pin});`);
       return "";
@@ -295,7 +298,9 @@ void a4988_move_steps(long steps) {
       const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '9';
       const pinId = idSafe(pin);
       const spd = generator.valueToCode(block, 'SPEED', generator.ORDER_ATOMIC) || '0';
-      compiler.addInclude(`#include <Servo.h>`);
+      // @ts-ignore
+      const bd = getBoardConfig(compiler.boardId);
+      compiler.addInclude(bd.platform === "esp32" ? `#include <ESP32Servo.h>` : `#include <Servo.h>`);
       compiler.addGlobal(`Servo esc_${pinId};`);
       compiler.addSetup(`esc_${pinId}.attach(${pin}, 1000, 2000);`);
       return `esc_${pinId}.write(${spd});\n`;

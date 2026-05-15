@@ -129,15 +129,21 @@ void sdWriteBlock(String path, String c) {
       let c = generator.valueToCode(block, 'CONTENT', generator.ORDER_ATOMIC) || '""';
       p = asCppString(p);
       c = asCppString(c);
-      compiler.addGlobal(`
+      // @ts-ignore
+      const bd = getBoardConfig(compiler.boardId);
+      if (bd.platform === "esp32" || bd.platform === "esp8266") {
+        compiler.addGlobal(`
+void sdAppendBlock(String path, String c) {
+  File f = SD.open(path, FILE_APPEND);
+  if (f) { f.print(c); f.close(); }
+}`);
+      } else {
+        compiler.addGlobal(`
 void sdAppendBlock(String path, String c) {
   File f = SD.open(path, FILE_WRITE);
-  if (f) {
-    f.seek(f.size()); // append in a portable way
-    f.print(c);
-    f.close();
-  }
+  if (f) { f.print(c); f.close(); }
 }`);
+      }
       return `sdAppendBlock(${p}, ${c});\n`;
     };
     generator.forBlock["sd_delete_file"] = function(block: any, generator: any) {
@@ -158,7 +164,7 @@ void sdAppendBlock(String path, String c) {
     generator.forBlock["sd_rmdir"] = function(block: any, generator: any) {
       let p = generator.valueToCode(block, 'PATH', generator.ORDER_ATOMIC) || '""';
       p = asCppString(p);
-      return `SD.remove(${p});\n`;
+      return `SD.rmdir(${p});\n`;
     };
 
     // EEPROM

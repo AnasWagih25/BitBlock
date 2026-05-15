@@ -18,6 +18,17 @@ export interface MLArchitecture {
   baseSizeKb: number;
   inputResolution?: { width: number, height: number };
   hyperparameters?: MLHyperparameter[];
+  /** Recommended dataset sizes for this architecture */
+  recommendedSamples?: {
+    /** Absolute minimum to get any result */
+    min: number;
+    /** Recommended for good accuracy */
+    recommended: number;
+    /** Ideal for best results */
+    ideal?: number;
+    /** Unit label, e.g. "per class", "per person", "total (normal only)" */
+    unit: string;
+  };
 }
 
 const standardHyperparams: MLHyperparameter[] = [
@@ -160,27 +171,27 @@ const ssdHyperparams: MLHyperparameter[] = [
 
 export const ML_ARCHITECTURES: Record<string, MLArchitecture> = {
   // ── Image Classification ──
-  "mobilenet_v1":      { id: "mobilenet_v1", name: "MobileNetV1 INT8", type: "classification", recommendedInput: "Image", baseSizeKb: 450, inputResolution: { width: 96, height: 96 }, hyperparameters: mobileNetHyperparams },
-  "mobilenet_v2":      { id: "mobilenet_v2", name: "MobileNetV2 INT8 (Best)", type: "classification", recommendedInput: "Image", baseSizeKb: 500, inputResolution: { width: 96, height: 96 }, hyperparameters: mobileNetV2Hyperparams },
-  "efficientnet_lite0": { id: "efficientnet_lite0", name: "EfficientNet-Lite0 INT8", type: "classification", recommendedInput: "Image", baseSizeKb: 1200, inputResolution: { width: 96, height: 96 }, hyperparameters: efficientNetHyperparams },
+  "mobilenet_v1":      { id: "mobilenet_v1", name: "MobileNetV1 INT8", type: "classification", recommendedInput: "Image", baseSizeKb: 450, inputResolution: { width: 96, height: 96 }, hyperparameters: mobileNetHyperparams, recommendedSamples: { min: 50, recommended: 150, ideal: 300, unit: "per class" } },
+  "mobilenet_v2":      { id: "mobilenet_v2", name: "MobileNetV2 INT8 (Best)", type: "classification", recommendedInput: "Image", baseSizeKb: 500, inputResolution: { width: 96, height: 96 }, hyperparameters: mobileNetV2Hyperparams, recommendedSamples: { min: 50, recommended: 150, ideal: 300, unit: "per class" } },
+  "efficientnet_lite0": { id: "efficientnet_lite0", name: "EfficientNet-Lite0 INT8", type: "classification", recommendedInput: "Image", baseSizeKb: 1200, inputResolution: { width: 96, height: 96 }, hyperparameters: efficientNetHyperparams, recommendedSamples: { min: 80, recommended: 200, ideal: 500, unit: "per class" } },
 
   // ── Face Recognition ──
-  "face_recognition":  { id: "face_recognition", name: "MobileFaceNet-Nano", type: "classification", recommendedInput: "Image", baseSizeKb: 250, inputResolution: { width: 96, height: 96 }, hyperparameters: faceHyperparams },
+  "face_recognition":  { id: "face_recognition", name: "MobileFaceNet-Nano", type: "classification", recommendedInput: "Image", baseSizeKb: 250, inputResolution: { width: 96, height: 96 }, hyperparameters: faceHyperparams, recommendedSamples: { min: 20, recommended: 50, ideal: 100, unit: "per person" } },
 
   // ── Object Detection ──
-  "fomo":              { id: "fomo", name: "FOMO Centroid Detection", type: "detection", recommendedInput: "Image", baseSizeKb: 250, inputResolution: { width: 96, height: 96 }, hyperparameters: imageHyperparams },
-  "ssd_mobilenet_v2":  { id: "ssd_mobilenet_v2", name: "SSD-MobileNetV2 (PSRAM)", type: "detection", recommendedInput: "Image", baseSizeKb: 1800, inputResolution: { width: 96, height: 96 }, hyperparameters: ssdHyperparams },
+  "fomo":              { id: "fomo", name: "FOMO Centroid Detection", type: "detection", recommendedInput: "Image", baseSizeKb: 250, inputResolution: { width: 96, height: 96 }, hyperparameters: imageHyperparams, recommendedSamples: { min: 50, recommended: 150, ideal: 300, unit: "per class" } },
+  "ssd_mobilenet_v2":  { id: "ssd_mobilenet_v2", name: "SSD-MobileNetV2 (PSRAM)", type: "detection", recommendedInput: "Image", baseSizeKb: 1800, inputResolution: { width: 96, height: 96 }, hyperparameters: ssdHyperparams, recommendedSamples: { min: 100, recommended: 300, ideal: 500, unit: "per class" } },
 
   // ── Audio / Keyword Spotting ──
-  "cnn_1d_mfcc":       { id: "cnn_1d_mfcc", name: "1D CNN on MFCC", type: "classification", recommendedInput: "Audio", baseSizeKb: 60, hyperparameters: sensorHyperparams },
-  "ds_cnn":            { id: "ds_cnn", name: "DS-CNN Keyword Spotting", type: "classification", recommendedInput: "Audio", baseSizeKb: 90, hyperparameters: sensorHyperparams },
+  "cnn_1d_mfcc":       { id: "cnn_1d_mfcc", name: "1D CNN on MFCC", type: "classification", recommendedInput: "Audio", baseSizeKb: 60, hyperparameters: sensorHyperparams, recommendedSamples: { min: 30, recommended: 100, ideal: 200, unit: "per keyword" } },
+  "ds_cnn":            { id: "ds_cnn", name: "DS-CNN Keyword Spotting", type: "classification", recommendedInput: "Audio", baseSizeKb: 90, hyperparameters: sensorHyperparams, recommendedSamples: { min: 50, recommended: 150, ideal: 300, unit: "per keyword" } },
 
   // ── Gesture / IMU ──
-  "cnn_1d_imu":        { id: "cnn_1d_imu", name: "1D CNN on IMU (Gesture)", type: "classification", recommendedInput: "IMU", baseSizeKb: 30, hyperparameters: sensorHyperparams },
+  "cnn_1d_imu":        { id: "cnn_1d_imu", name: "1D CNN on IMU (Gesture)", type: "classification", recommendedInput: "IMU", baseSizeKb: 30, hyperparameters: sensorHyperparams, recommendedSamples: { min: 30, recommended: 80, ideal: 150, unit: "per gesture" } },
 
   // ── Anomaly Detection ──
-  "autoencoder":       { id: "autoencoder", name: "Dense Autoencoder Anomaly", type: "anomaly", recommendedInput: "Sensor", baseSizeKb: 15, hyperparameters: anomalyHyperparams },
-  "autoencoder_tiny":  { id: "autoencoder_tiny", name: "Tiny Dense Autoencoder", type: "anomaly", recommendedInput: "Sensor", baseSizeKb: 5, hyperparameters: anomalyHyperparams },
+  "autoencoder":       { id: "autoencoder", name: "Dense Autoencoder Anomaly", type: "anomaly", recommendedInput: "Sensor", baseSizeKb: 15, hyperparameters: anomalyHyperparams, recommendedSamples: { min: 100, recommended: 300, ideal: 500, unit: "total (normal only)" } },
+  "autoencoder_tiny":  { id: "autoencoder_tiny", name: "Tiny Dense Autoencoder", type: "anomaly", recommendedInput: "Sensor", baseSizeKb: 5, hyperparameters: anomalyHyperparams, recommendedSamples: { min: 50, recommended: 150, ideal: 300, unit: "total (normal only)" } },
 };
 
 export const TASK_ARCHITECTURES: Record<MLTask, string[]> = {

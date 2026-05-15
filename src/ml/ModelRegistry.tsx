@@ -75,6 +75,7 @@ export default function ModelRegistry({ projectId, pipelineArchitecture, activeJ
   const [jobs, setJobs] = useState<CompletedTrainingJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!projectId) {
@@ -255,12 +256,63 @@ export default function ModelRegistry({ projectId, pipelineArchitecture, activeJ
                     {(job.modelSizeBytes / 1024).toFixed(1)} KB
                   </div>
                 )}
-                {job.labels && job.labels.length > 0 && (
-                  <div style={{ marginTop: 4, wordBreak: "break-word" }}>
-                    <span style={{ color: "rgba(242,242,240,0.35)" }}>Labels: </span>
-                    {job.labels.join(", ")}
+                
+                {expandedJobId === job.id && (
+                  <div style={{ marginTop: 12, padding: 12, background: 'rgba(0,0,0,0.3)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.05)' }}>
+                     {job.labels && job.labels.length > 0 && (
+                       <div style={{ marginBottom: 8, wordBreak: "break-word" }}>
+                         <span style={{ color: "rgba(242,242,240,0.35)", fontWeight: 700, display: 'block', marginBottom: 2 }}>Labels: </span>
+                         {job.labels.join(", ")}
+                       </div>
+                     )}
+                     {job.hyperparameters && Object.keys(job.hyperparameters).length > 0 && (
+                       <div style={{ marginBottom: 8 }}>
+                         <span style={{ color: "rgba(242,242,240,0.35)", fontWeight: 700, display: 'block', marginBottom: 2 }}>Hyperparameters: </span>
+                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 4 }}>
+                           {Object.entries(job.hyperparameters).map(([k, v]) => (
+                             <div key={k}>
+                               <span style={{ color: 'rgba(157,39,222,0.8)' }}>{k}</span>: {typeof v === 'object' ? JSON.stringify(v) : String(v)}
+                             </div>
+                           ))}
+                         </div>
+                       </div>
+                     )}
+                     {job.metrics && Object.keys(job.metrics).length > 0 && (
+                       <div style={{ marginBottom: 8 }}>
+                         <span style={{ color: "rgba(242,242,240,0.35)", fontWeight: 700, display: 'block', marginBottom: 2 }}>All Metrics: </span>
+                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 4 }}>
+                           {Object.entries(job.metrics).map(([k, v]) => (
+                             <div key={k}>
+                               <span style={{ color: '#4ade80' }}>{k}</span>: {typeof v === 'number' ? v.toFixed(5) : String(v)}
+                             </div>
+                           ))}
+                         </div>
+                       </div>
+                     )}
+                     {ds?.labelCountsTraining && Object.keys(ds.labelCountsTraining).length > 0 && (
+                       <div>
+                         <span style={{ color: "rgba(242,242,240,0.35)", fontWeight: 700, display: 'block', marginBottom: 2 }}>Training Distribution: </span>
+                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                           {Object.entries(ds.labelCountsTraining).map(([k, v]) => (
+                             <div key={k} style={{ display: 'flex', gap: 4 }}>
+                               <span style={{ color: '#E9D5FF' }}>{k}</span>
+                               <span style={{ color: 'rgba(242,242,240,0.5)' }}>: {v}</span>
+                             </div>
+                           ))}
+                         </div>
+                       </div>
+                     )}
                   </div>
                 )}
+                
+                <div style={{ marginTop: 8 }}>
+                  <button 
+                    onClick={() => setExpandedJobId(prev => prev === job.id ? null : job.id)}
+                    style={{ background: 'none', border: 'none', color: '#c084fc', fontSize: 10, cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
+                  >
+                    {expandedJobId === job.id ? "Hide complete stats" : "View complete stats"}
+                  </button>
+                </div>
               </div>
             </div>
           );

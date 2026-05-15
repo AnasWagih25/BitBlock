@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import JSZip from 'jszip';
+import smartcrop from 'smartcrop';
 import { db, storage } from "../lib/firebase";
 import {
   collection,
@@ -15,9 +17,9 @@ import {
   onSnapshot,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
-import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
+import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { ML_ARCHITECTURES } from '../boards/MLCapabilities';
-import { Camera, Upload, Trash2, Scissors, Check, Tag, Database, RefreshCw, FolderOpen, Save, CheckCircle, Circle, LayoutGrid, Pencil, Settings2, ChevronDown } from 'lucide-react';
+import { Camera, Upload, Trash2, Scissors, Check, Tag, Database, RefreshCw, FolderOpen, Save, CheckCircle, Circle, LayoutGrid, Pencil, ChevronDown } from 'lucide-react';
 import { useAppDialog } from '../contexts/DialogContext';
 
 interface SavedDataset {
@@ -54,6 +56,18 @@ type DatasetItem = {
   uploaded?: boolean;
   objects?: { label: string; cx: number; cy: number }[];
   uploadStatus?: 'uploading' | 'error';
+  savedCrop?: { x: number; y: number; size: number; renderedWidth: number; renderedHeight: number; };
+};
+
+type ZipFolderReview = {
+  folderPath: string;
+  folderName: string;
+  sampleFileName: string;
+  entries: any[];
+  labelStrategy: 'folderName' | 'fileName' | 'custom';
+  customLabel: string;
+  selected: boolean;
+  importLimit: number | '';
 };
 
 const chunkIds = <T,>(arr: T[], size: number): T[][] => {
@@ -102,7 +116,7 @@ function normalizeSavedDatasetDoc(d: QueryDocumentSnapshot): SavedDataset {
   return {
     ...(raw as unknown as Omit<SavedDataset, "id">),
     id: d.id,
-    name: typeof raw.name === "string" && raw.name.trim() ? raw.name.trim() : "(unnamed)",
+    name: typeof raw.name === "string" && raw.name.trim() ? raw.name.replace(/Â·/g, '·').replace(/Ã—/g, '×').trim() : "(unnamed)",
     sampleIds,
     sampleCount: sampleIds.length,
     labels,
@@ -130,13 +144,16 @@ export default function DataCollection({ projectId, architecture }: { projectId:
   const [streamData, setStreamData] = useState<number[][]>([]);
   const [cloudSamples, setCloudSamples] = useState<CloudSample[]>([]);
   const [loadingCloud, setLoadingCloud] = useState(false);
+  const [isProcessingAll, setIsProcessingAll] = useState(false);
+  const [zipReview, setZipReview] = useState<ZipFolderReview[] | null>(null);
+  const [smartCropAssistantOpen, setSmartCropAssistantOpen] = useState(false);
+  const [expandedCloudGroups, setExpandedCloudGroups] = useState<Set<string>>(new Set());
   const [savedDatasets, setSavedDatasets] = useState<SavedDataset[]>([]);
   const [datasetName, setDatasetName] = useState('');
   const [snapshotLabelPick, setSnapshotLabelPick] = useState('');
   const [dataCollectionTab, setDataCollectionTab] = useState<"capture" | "cloud">("capture");
   const [selectedCloudIds, setSelectedCloudIds] = useState<Set<string>>(new Set());
   const [cloudFilter, setCloudFilter] = useState("");
-  const [showCloudAdvanced, setShowCloudAdvanced] = useState(false);
   const [savedSnapshotsExpanded, setSavedSnapshotsExpanded] = useState(true);
   /** Loaded on expand: ordered slots matching snapshot sampleIds (Firestore `in` is unordered). */
   const [expandedPreview, setExpandedPreview] = useState<{
@@ -147,6 +164,7 @@ export default function DataCollection({ projectId, architecture }: { projectId:
   const [appendDsId, setAppendDsId] = useState("");
   const [relabelModal, setRelabelModal] = useState<{ ids: string[] } | null>(null);
   const [relabelValue, setRelabelValue] = useState("");
+  const [previewImageModal, setPreviewImageModal] = useState<{ url: string, label: string } | null>(null);
   /** Label histogram per dataset id from Firestore samples (not client cache). */
   const [datasetRemoteLabels, setDatasetRemoteLabels] = useState<Record<string, Record<string, number>>>({});
 
@@ -159,7 +177,7 @@ export default function DataCollection({ projectId, architecture }: { projectId:
 
   const [dataset, setDataset] = useState<DatasetItem[]>([]);
   const [selectedSample, setSelectedSample] = useState<string | null>(null);
-  /** FOMO: adjust square crop vs click centroids inside crop (normalized 0–1 in crop space). */
+  /** FOMO: adjust square crop vs click centroids inside crop (normalized 0"“1 in crop space). */
   const [fomoMode, setFomoMode] = useState<"crop" | "mark">("crop");
   const [crop, setCrop] = useState({ x: 0, y: 0, size: 200 });
   const [isDragging, setIsDragging] = useState(false);
@@ -197,23 +215,8 @@ export default function DataCollection({ projectId, architecture }: { projectId:
       setLoadingCloud(false);
       return;
     }
-    setLoadingCloud(true);
-    const col = collection(db, "projects", projectId, "ml_samples");
-    const unsub = onSnapshot(
-      col,
-      (snap) => {
-        const items: CloudSample[] = snap.docs.map((d) => ({ ...d.data(), id: d.id } as CloudSample));
-        setCloudSamples(items);
-        setSamples(items.length);
-        setLoadingCloud(false);
-      },
-      (e) => {
-        console.error("ml_samples listener failed", e);
-        setLoadingCloud(false);
-      }
-    );
-    return () => unsub();
-  }, [projectId]);
+    loadCloudSamples();
+  }, [projectId, loadCloudSamples]);
 
   useEffect(() => {
     if (!projectId) {
@@ -352,7 +355,7 @@ export default function DataCollection({ projectId, architecture }: { projectId:
       }
       const labels: Record<string, number> = {};
       items.forEach((s) => {
-        const lb = normLabel(s.label) || "—";
+        const lb = normLabel(s.label) || "-";
         labels[lb] = (labels[lb] || 0) + 1;
       });
       await addDoc(collection(db, "projects", projectId, "ml_datasets"), {
@@ -460,7 +463,7 @@ export default function DataCollection({ projectId, architecture }: { projectId:
     } catch (e) { console.error(e); }
   };
 
-  // Camera stream management — persist stream in ref so it survives re-renders
+  // Camera stream management - persist stream in ref so it survives re-renders
   const streamRef = useRef<MediaStream | null>(null);
 
   const clampCropToContainer = useCallback((nextCrop: { x: number; y: number; size: number }) => {
@@ -520,11 +523,13 @@ export default function DataCollection({ projectId, architecture }: { projectId:
       const imageEl = cropImageRef.current;
       if (!imageEl || imageEl.clientWidth === 0 || imageEl.clientHeight === 0) return;
       const initialSize = Math.round(Math.min(imageEl.clientWidth, imageEl.clientHeight) * 0.6);
-      setCrop(clampCropToContainer({
+      const newCrop = clampCropToContainer({
         x: Math.round((imageEl.clientWidth - initialSize) / 2),
         y: Math.round((imageEl.clientHeight - initialSize) / 2),
         size: initialSize,
-      }));
+      });
+      setCrop(newCrop);
+      setDataset(prev => prev.map(d => d.id === selectedSample ? { ...d, savedCrop: { ...newCrop, renderedWidth: imageEl.clientWidth, renderedHeight: imageEl.clientHeight } } : d));
     };
 
     // Wait for image to actually load before measuring dimensions
@@ -547,19 +552,67 @@ export default function DataCollection({ projectId, architecture }: { projectId:
     return () => window.removeEventListener("resize", updateCropFromRenderedImage);
   }, [selectedSample, clampCropToContainer]);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-     if (!isFomo && !dataLabel.trim()) { void alert('Enter a label before uploading images'); return; }
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+     if (!isFomo && !dataLabel.trim()) { void alert('Note: If uploading images directly (not zip), you may want to set a label first. If uploading a zip, you can choose labels automatically.'); }
      const files = Array.from(e.target.files || []);
-     files.forEach(file => {
-        const url = URL.createObjectURL(file);
-        const lab = dataLabel.trim() || (isFomo ? "object" : "");
-        setDataset(prev => [...prev, {
-          id: Math.random().toString(36).substr(2, 9),
-          url,
-          label: lab,
-          ...(isFomo ? { objects: [] as { label: string; cx: number; cy: number }[] } : {}),
-        }]);
-     });
+     const newItems: DatasetItem[] = [];
+
+     for (const file of files) {
+       if (file.name.toLowerCase().endsWith('.zip')) {
+         try {
+           const zip = new JSZip();
+           const contents = await zip.loadAsync(file);
+           
+           const foldersMap = new Map<string, ZipFolderReview>();
+           
+           for (const [relativePath, zipEntry] of Object.entries(contents.files)) {
+             if (zipEntry.dir) continue;
+             if (!relativePath.match(/\.(jpg|jpeg|png|gif|webp)$/i)) continue;
+             
+             const parts = relativePath.split('/');
+             const fileName = parts[parts.length - 1];
+             const folderPath = parts.length > 1 ? parts.slice(0, -1).join('/') + '/' : '';
+             const folderName = parts.length > 1 ? parts[parts.length - 2] : 'Root';
+             
+             if (!foldersMap.has(folderPath)) {
+                foldersMap.set(folderPath, {
+                  folderPath,
+                  folderName,
+                  sampleFileName: fileName,
+                  entries: [],
+                  labelStrategy: parts.length > 1 ? 'folderName' : 'fileName',
+                  customLabel: '',
+                  selected: true,
+                  importLimit: ''
+                });
+             }
+             foldersMap.get(folderPath)!.entries.push(zipEntry);
+           }
+           
+           if (foldersMap.size > 0) {
+             setZipReview(Array.from(foldersMap.values()));
+             if (fileInputRef.current) fileInputRef.current.value = "";
+             return; // Stop and wait for user review via modal
+           }
+         } catch (err: any) {
+           await alert("Failed to process zip file: " + err.message);
+         }
+       } else {
+         const url = URL.createObjectURL(file);
+         const lab = dataLabel.trim() || (isFomo ? "object" : "");
+         newItems.push({
+           id: Math.random().toString(36).substr(2, 9),
+           url,
+           label: lab,
+           ...(isFomo ? { objects: [] as { label: string; cx: number; cy: number }[] } : {}),
+         });
+       }
+     }
+     
+     if (newItems.length > 0) {
+        setDataset(prev => [...prev, ...newItems]);
+     }
+     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const handleSnapshot = () => {
@@ -604,7 +657,7 @@ export default function DataCollection({ projectId, architecture }: { projectId:
 
   const formatSampleDate = (s: CloudSample) => {
     const t = s.createdAt?.toMillis?.() ?? (s.createdAt?.seconds ? s.createdAt.seconds * 1000 : 0);
-    if (!t) return "—";
+    if (!t) return "-";
     return new Date(t).toLocaleString();
   };
 
@@ -620,7 +673,7 @@ export default function DataCollection({ projectId, architecture }: { projectId:
   const samplesGroupedByLabel = useMemo(() => {
     const m = new Map<string, CloudSample[]>();
     for (const s of filteredCloudSamples) {
-      const key = (s.label && String(s.label).trim()) || "—";
+      const key = (s.label && String(s.label).trim()) || "-";
       if (!m.has(key)) m.set(key, []);
       m.get(key)!.push(s);
     }
@@ -646,17 +699,29 @@ export default function DataCollection({ projectId, architecture }: { projectId:
     if (!projectId) return;
     const ok = await confirm("Delete this sample from the cloud? This cannot be undone.");
     if (!ok) return;
+    
+    const sample = cloudSamples.find(s => s.id === id);
+    
+    // Optimistic UI update
+    setCloudSamples((prev) => prev.filter((s) => s.id !== id));
+    setSamples((c) => Math.max(0, c - 1));
+    setSelectedCloudIds((prev) => {
+      const n = new Set(prev);
+      n.delete(id);
+      return n;
+    });
+    
     try {
+      if (sample?.imageUrl) {
+        try {
+          await deleteObject(storageRef(storage, sample.imageUrl));
+        } catch (e) {
+          console.warn("Storage deletion failed:", e);
+        }
+      }
       await deleteDoc(doc(db, "projects", projectId, "ml_samples", id));
-      setCloudSamples((prev) => prev.filter((s) => s.id !== id));
-      setSamples((c) => Math.max(0, c - 1));
-      setSelectedCloudIds((prev) => {
-        const n = new Set(prev);
-        n.delete(id);
-        return n;
-      });
     } catch (e: any) {
-      await alert("Delete failed: " + (e?.message || "error"));
+      console.error("Delete failed:", e);
     }
   };
 
@@ -665,16 +730,24 @@ export default function DataCollection({ projectId, architecture }: { projectId:
     const ok = await confirm(`Delete ${selectedCloudIds.size} selected samples permanently?`);
     if (!ok) return;
     const ids = [...selectedCloudIds];
-    for (const id of ids) {
-      try {
-        await deleteDoc(doc(db, "projects", projectId, "ml_samples", id));
-      } catch (e) {
-        console.error(e);
-      }
-    }
+    
+    // Optimistic UI update for immediate feedback
     setCloudSamples((prev) => prev.filter((s) => !selectedCloudIds.has(s.id)));
     setSamples((c) => Math.max(0, c - ids.length));
     clearCloudSelection();
+    
+    // Delete in parallel
+    const deletePromises = ids.map(async (id) => {
+       const sample = cloudSamples.find(s => s.id === id);
+       if (sample?.imageUrl) {
+         try {
+           await deleteObject(storageRef(storage, sample.imageUrl));
+         } catch (e) {}
+       }
+       await deleteDoc(doc(db, "projects", projectId, "ml_samples", id));
+    });
+    
+    await Promise.allSettled(deletePromises);
   };
 
   const openRelabel = (ids: string[]) => {
@@ -745,7 +818,7 @@ export default function DataCollection({ projectId, architecture }: { projectId:
       }
       const labels: Record<string, number> = {};
       resolved.forEach((s) => {
-        const lb = normLabel(s.label) || "—";
+        const lb = normLabel(s.label) || "-";
         labels[lb] = (labels[lb] || 0) + 1;
       });
       await updateDoc(ref, {
@@ -823,7 +896,14 @@ export default function DataCollection({ projectId, architecture }: { projectId:
            );
         }
      };
-     const handleMouseUp = () => { setIsDragging(false); setIsResizing(false); };
+     const handleMouseUp = () => { 
+        setIsDragging(false); 
+        setIsResizing(false); 
+        if (selectedSample && cropImageRef.current) {
+           const c = cropImageRef.current;
+           setDataset(prev => prev.map(d => d.id === selectedSample ? { ...d, savedCrop: { ...crop, renderedWidth: c.clientWidth, renderedHeight: c.clientHeight } } : d));
+        }
+     };
      window.addEventListener('mousemove', handleMouseMove);
      window.addEventListener('mouseup', handleMouseUp);
      return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
@@ -832,7 +912,7 @@ export default function DataCollection({ projectId, architecture }: { projectId:
   const processAndSaveSample = async (sample: DatasetItem) => {
      if (!canvasRef.current || !res) return;
      if (isFomo && (!sample.objects || sample.objects.length === 0)) {
-       await alert('FOMO needs at least one object center. Switch to “Mark objects”, choose the class, then click inside the purple square.');
+       await alert('FOMO needs at least one object center. Switch to "Mark objects", choose the class, then click inside the purple square.');
        return;
      }
      
@@ -877,8 +957,19 @@ export default function DataCollection({ projectId, architecture }: { projectId:
        const ctx = canvas.getContext('2d');
        if (!ctx) throw new Error("No context");
 
-       const scaleX = renderedWidth > 0 ? img.naturalWidth / renderedWidth : 1;
-       const scaleY = renderedHeight > 0 ? img.naturalHeight / renderedHeight : 1;
+       let currentCrop = sample.savedCrop;
+       let scaleX = 1;
+       let scaleY = 1;
+
+       if (!currentCrop) {
+          currentCrop = { ...crop };
+          scaleX = renderedWidth > 0 ? img.naturalWidth / renderedWidth : 1;
+          scaleY = renderedHeight > 0 ? img.naturalHeight / renderedHeight : 1;
+       } else {
+          scaleX = currentCrop.renderedWidth > 0 ? img.naturalWidth / currentCrop.renderedWidth : 1;
+          scaleY = currentCrop.renderedHeight > 0 ? img.naturalHeight / currentCrop.renderedHeight : 1;
+       }
+
        const srcX = currentCrop.x * scaleX;
        const srcY = currentCrop.y * scaleY;
        const srcW = currentCrop.size * scaleX;
@@ -928,6 +1019,152 @@ export default function DataCollection({ projectId, architecture }: { projectId:
        console.error('Upload error:', err);
        setDataset(prev => prev.map(d => d.id === sample.id ? { ...d, uploadStatus: 'error' } : d));
      }
+  };
+
+  const processAllSamples = async () => {
+    setIsProcessingAll(true);
+    const pending = dataset.filter(d => d.uploadStatus !== 'uploading' && d.uploadStatus !== 'error' && !d.uploaded);
+    
+    // ── Learn from user's manual crops ──
+    // When the user manually crops one sample per class, we learn the ratio
+    // between their chosen crop size and the smartcrop-detected subject region.
+    // This lets us replicate their framing intent on all other images.
+    //
+    // All math here is done in NATURAL PIXEL coordinates to avoid any
+    // CSS-rendered-size vs natural-size mismatch.
+    const referenceCrops: Record<string, {
+      /** Ratio of user's crop size to the shorter image dimension (in natural px) */
+      sizeRatioToImage: number;
+    }> = {};
+
+    for (const d of dataset) {
+      if (d.savedCrop && !referenceCrops[d.label]) {
+        // Convert the user's CSS-space crop to natural pixel space
+        const rw = d.savedCrop.renderedWidth || 1;
+        const rh = d.savedCrop.renderedHeight || 1;
+        // We need the actual natural dimensions. Load them.
+        // For the reference, estimate from savedCrop data:
+        // The rendered dimensions are CSS pixels of the <img> element.
+        // We can't get naturalWidth without loading, but we can compute
+        // the ratio in rendered space and it's the same ratio in natural space.
+        const cropSizeInRendered = d.savedCrop.size;
+        const shorterSideRendered = Math.min(rw, rh);
+        const ratio = shorterSideRendered > 0 ? cropSizeInRendered / shorterSideRendered : 0.6;
+        referenceCrops[d.label] = { sizeRatioToImage: Math.max(0.1, Math.min(1.0, ratio)) };
+      }
+    }
+    
+    for (const sample of pending) {
+       setDataset(prev => prev.map(d => d.id === sample.id ? { ...d, uploadStatus: 'uploading' } : d));
+       
+       try {
+         const img = new Image();
+         img.crossOrigin = 'anonymous';
+         img.src = sample.url;
+         await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; });
+
+         const canvas = document.createElement('canvas');
+         if (!res) throw new Error("No resolution configured");
+         canvas.width = res.width;
+         canvas.height = res.height;
+         const ctx = canvas.getContext('2d');
+         if (!ctx) throw new Error("No context");
+
+         const natW = img.naturalWidth;
+         const natH = img.naturalHeight;
+
+         // If user already manually cropped this specific sample, use that directly
+         if (sample.savedCrop) {
+            const sc = sample.savedCrop;
+            const scaleX = sc.renderedWidth > 0 ? natW / sc.renderedWidth : 1;
+            const scaleY = sc.renderedHeight > 0 ? natH / sc.renderedHeight : 1;
+            const srcX = Math.max(0, Math.min(sc.x * scaleX, natW - 1));
+            const srcY = Math.max(0, Math.min(sc.y * scaleY, natH - 1));
+            const srcW = Math.max(1, Math.min(sc.size * scaleX, natW - srcX));
+            const srcH = Math.max(1, Math.min(sc.size * scaleY, natH - srcY));
+            ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, res.width, res.height);
+         } else {
+            // ── Smart Auto-Crop Pipeline ──
+            // 1. Use smartcrop.js to find the most interesting region
+            // 2. Use the learned sizeRatio from the user's reference crop (or default 0.65)
+            // 3. Center a square crop of that size on the detected subject center
+            // 4. Clamp to image bounds
+            
+            const ref = referenceCrops[sample.label];
+            const targetRatio = ref ? ref.sizeRatioToImage : 0.65;
+            
+            let cropX: number, cropY: number, cropSize: number;
+            
+            try {
+               // smartcrop works best with a square target
+               const scResult = await smartcrop.crop(img, { width: res.width, height: res.height });
+               const top = scResult.topCrop;
+               
+               // The center of the detected subject (in natural pixel coords)
+               const subjectCx = top.x + top.width / 2;
+               const subjectCy = top.y + top.height / 2;
+               
+               // Our desired crop size based on the user's learned ratio
+               cropSize = Math.round(Math.min(natW, natH) * targetRatio);
+               // Ensure crop is at least as big as the detected region to not cut the subject
+               cropSize = Math.max(cropSize, Math.max(top.width, top.height));
+               // But never bigger than the image
+               cropSize = Math.min(cropSize, Math.min(natW, natH));
+               
+               // Center the crop on the subject
+               cropX = Math.round(subjectCx - cropSize / 2);
+               cropY = Math.round(subjectCy - cropSize / 2);
+            } catch(e) {
+               console.warn("Smartcrop detection failed, using center crop:", e);
+               cropSize = Math.round(Math.min(natW, natH) * targetRatio);
+               cropX = Math.round((natW - cropSize) / 2);
+               cropY = Math.round((natH - cropSize) / 2);
+            }
+            
+            // Clamp to image bounds
+            cropX = Math.max(0, Math.min(cropX, natW - cropSize));
+            cropY = Math.max(0, Math.min(cropY, natH - cropSize));
+            // Final safety: ensure size doesn't exceed remaining space
+            cropSize = Math.min(cropSize, natW - cropX, natH - cropY);
+            cropSize = Math.max(1, cropSize);
+            
+            ctx.drawImage(img, cropX, cropY, cropSize, cropSize, 0, 0, res.width, res.height);
+         }
+         
+         const finalBlob = await new Promise<Blob|null>(r => canvas.toBlob(r, 'image/jpeg', 0.9));
+         if (finalBlob && projectId) {
+            const fileName = `${Date.now()}_${sample.label}.jpg`;
+            const fileRef = storageRef(storage, `projects/${projectId}/ml_data/${fileName}`);
+            await uploadBytes(fileRef, finalBlob);
+            const downloadURL = await getDownloadURL(fileRef);
+
+            const primaryLabel = isFomo && sample.objects?.length ? sample.objects[0].label : sample.label;
+            const sampleRef = await addDoc(collection(db, "projects", projectId, "ml_samples"), {
+                label: primaryLabel,
+                arch: architecture,
+                resolution: res,
+                type: "image",
+                imageUrl: downloadURL,
+                ...(isFomo && sample.objects?.length ? { objects: sample.objects, detection: "fomo_centroids" as const } : {}),
+                createdAt: serverTimestamp()
+            });
+            setSamples(s => s + 1);
+            setCloudSamples(prev => [...prev, {
+              id: sampleRef.id,
+              label: primaryLabel,
+              type: 'image',
+              imageUrl: downloadURL,
+              ...(isFomo && sample.objects ? { objects: sample.objects } : {}),
+            }]);
+            
+            setDataset(prev => prev.filter(d => d.id !== sample.id));
+         }
+       } catch (err) {
+         console.error('Upload error:', err);
+         setDataset(prev => prev.map(d => d.id === sample.id ? { ...d, uploadStatus: 'error' } : d));
+       }
+    }
+    setIsProcessingAll(false);
   };
 
   const applyBulkLabel = () => {
@@ -1025,6 +1262,186 @@ export default function DataCollection({ projectId, architecture }: { projectId:
 
   return (
     <div style={{ padding: 16, display: 'flex', flexDirection: 'column', height: '100%', boxSizing: 'border-box', overflow: 'hidden', gap: 0 }}>
+      {zipReview && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#12031C', border: '1px solid rgba(157,39,222,0.4)', borderRadius: 12, padding: 20, width: 800, maxWidth: '95%', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+             <h3 style={{ margin: '0 0 16px', color: '#F2F2F0' }}>Import Settings & Labels</h3>
+             <p style={{ margin: '0 0 16px', fontSize: 13, color: 'rgba(242,242,240,0.6)' }}>Select which folders to import, set maximum limits, and choose how to label the images.</p>
+             
+             <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
+               {zipReview.map((folder, idx) => (
+                 <div key={folder.folderPath} style={{ background: 'rgba(255,255,255,0.05)', padding: 12, borderRadius: 8, display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={folder.selected} 
+                      onChange={e => setZipReview(prev => prev!.map((f, i) => i === idx ? { ...f, selected: e.target.checked } : f))}
+                      style={{ cursor: 'pointer', width: 16, height: 16 }}
+                    />
+                    <div style={{ flex: '1 1 150px' }}>
+                       <div style={{ fontSize: 13, fontWeight: 600, color: folder.selected ? '#D8B4FE' : 'rgba(242,242,240,0.3)', marginBottom: 4 }}>Folder: {folder.folderName}</div>
+                       <div style={{ fontSize: 11, color: folder.selected ? 'rgba(242,242,240,0.5)' : 'rgba(242,242,240,0.2)' }}>{folder.entries.length} images (e.g. {folder.sampleFileName})</div>
+                    </div>
+                    
+                    {folder.selected && (
+                      <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', flex: '2 1 300px', justifyContent: 'flex-end' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: 11, color: 'rgba(242,242,240,0.6)' }}>Import max:</span>
+                          <input 
+                            type="number" 
+                            min="1" 
+                            max={folder.entries.length} 
+                            value={folder.importLimit} 
+                            onChange={e => setZipReview(prev => prev!.map((f, i) => i === idx ? { ...f, importLimit: e.target.value === '' ? '' : parseInt(e.target.value) || '' } : f))}
+                            placeholder="All"
+                            style={{ background: '#050008', border: '1px solid rgba(157,39,222,0.3)', color: '#F2F2F0', padding: '6px', borderRadius: 6, fontSize: 12, width: 60 }}
+                          />
+                        </div>
+                        
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <select 
+                             value={folder.labelStrategy}
+                             onChange={e => {
+                               const v = e.target.value as any;
+                               setZipReview(prev => prev!.map((f, i) => i === idx ? { ...f, labelStrategy: v } : f));
+                             }}
+                             style={{ background: '#050008', border: '1px solid rgba(157,39,222,0.3)', color: '#F2F2F0', padding: '6px 10px', borderRadius: 6, fontSize: 12 }}
+                          >
+                             <option value="folderName">Use folder name ({folder.folderName})</option>
+                             <option value="fileName">Use file names (e.g. {folder.sampleFileName.replace(/\.[^/.]+$/, "")})</option>
+                             <option value="custom">Custom label...</option>
+                          </select>
+                          {folder.labelStrategy === 'custom' && (
+                             <input 
+                               value={folder.customLabel}
+                               onChange={e => setZipReview(prev => prev!.map((f, i) => i === idx ? { ...f, customLabel: e.target.value } : f))}
+                               placeholder="Enter label"
+                               style={{ background: '#050008', border: '1px solid rgba(157,39,222,0.3)', color: '#F2F2F0', padding: '6px 10px', borderRadius: 6, fontSize: 12, width: 100 }}
+                             />
+                          )}
+                        </div>
+                      </div>
+                    )}
+                 </div>
+               ))}
+             </div>
+             
+             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+               <button onClick={() => setZipReview(null)} className="btn-ghost">Cancel</button>
+               <button 
+                 onClick={async () => {
+                   const newItems: DatasetItem[] = [];
+                   for (const folder of zipReview) {
+                      if (!folder.selected) continue;
+                      let count = 0;
+                      let limit = typeof folder.importLimit === 'number' ? folder.importLimit : folder.entries.length;
+                      for (const zipEntry of folder.entries) {
+                        if (count >= limit) break;
+                        count++;
+                        let lab = folder.folderName;
+                        if (folder.labelStrategy === 'fileName') {
+                           const parts = zipEntry.name.split('/');
+                           const fileName = parts[parts.length - 1];
+                           lab = fileName.replace(/\.[^/.]+$/, "");
+                        } else if (folder.labelStrategy === 'custom') {
+                           lab = folder.customLabel.trim() || 'unlabeled';
+                        }
+                        
+                        const blob = await zipEntry.async("blob");
+                        const url = URL.createObjectURL(blob);
+                        newItems.push({
+                           id: Math.random().toString(36).substr(2, 9),
+                           url,
+                           label: lab,
+                           ...(isFomo ? { objects: [] as { label: string; cx: number; cy: number }[] } : {}),
+                        });
+                      }
+                   }
+                   setDataset(prev => [...prev, ...newItems]);
+                   setZipReview(null);
+                 }}
+                 className="btn-primary"
+               >
+                 Confirm and Load
+               </button>
+             </div>
+          </div>
+        </div>
+      )}
+      {smartCropAssistantOpen && (() => {
+        const classes = Array.from(new Set(dataset.map(d => d.label)));
+        const readyCount = classes.filter(cls => dataset.some(d => d.label === cls && d.savedCrop)).length;
+        const allReady = readyCount === classes.length && classes.length > 0;
+        return (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#12031C', border: '1px solid rgba(157,39,222,0.4)', borderRadius: 12, padding: 20, width: 520, maxWidth: '90%', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+             <h3 style={{ margin: '0 0 6px', color: '#F2F2F0', fontSize: 16 }}>Smart Crop Assistant</h3>
+             <p style={{ margin: '0 0 12px', fontSize: 12, color: 'rgba(242,242,240,0.5)', lineHeight: 1.5 }}>
+                <strong style={{ color: '#D8B4FE' }}>How it works:</strong> Crop <strong>one</strong> sample per class to teach the AI your framing style. Then hit "Process All" and it will auto-detect the subject in every remaining image and crop them the same way.
+             </p>
+
+             {/* Progress bar */}
+             <div style={{ marginBottom: 14 }}>
+               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                 <span style={{ fontSize: 10, color: 'rgba(242,242,240,0.4)', textTransform: 'uppercase' }}>Progress</span>
+                 <span style={{ fontSize: 10, color: allReady ? '#4ade80' : '#f59e0b', fontWeight: 600 }}>{readyCount}/{classes.length} classes ready</span>
+               </div>
+               <div style={{ height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                 <div style={{ height: '100%', borderRadius: 2, width: `${classes.length > 0 ? (readyCount / classes.length) * 100 : 0}%`, background: allReady ? '#4ade80' : '#f59e0b', transition: 'width 0.3s ease' }} />
+               </div>
+             </div>
+
+             <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+               {classes.map(cls => {
+                 const classSamples = dataset.filter(d => d.label === cls);
+                 const croppedSample = classSamples.find(d => d.savedCrop);
+                 const hasCropped = !!croppedSample;
+                 return (
+                   <div key={cls} style={{ background: hasCropped ? 'rgba(34,197,94,0.06)' : 'rgba(255,255,255,0.04)', padding: '10px 14px', borderRadius: 8, border: `1px solid ${hasCropped ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.06)'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                         {croppedSample && (
+                           <img src={croppedSample.url} style={{ width: 36, height: 36, borderRadius: 4, objectFit: 'cover', border: '1px solid rgba(34,197,94,0.3)' }} alt="" />
+                         )}
+                         <div>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: '#D8B4FE' }}>{cls} <span style={{ fontSize: 11, fontWeight: 400, color: 'rgba(242,242,240,0.4)' }}>({classSamples.length} images)</span></div>
+                            <div style={{ fontSize: 11, color: hasCropped ? '#10B981' : '#F59E0B', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
+                               {hasCropped ? <><CheckCircle size={11} /> Learned</> : <><Circle size={11} /> Needs 1 crop</>}
+                            </div>
+                         </div>
+                      </div>
+                      <button 
+                         onClick={() => {
+                            // Find an uncropped sample first, or fall back to the first one
+                            const target = classSamples.find(d => !d.savedCrop) || classSamples[0];
+                            setSelectedSample(target.id);
+                            setSmartCropAssistantOpen(false);
+                         }}
+                         className={hasCropped ? "btn-ghost" : "btn-primary"}
+                         style={{ fontSize: 11, padding: '5px 12px' }}
+                      >
+                         {hasCropped ? "Recrop" : "Crop Sample"}
+                      </button>
+                   </div>
+                 )
+               })}
+             </div>
+             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+               <button onClick={() => setSmartCropAssistantOpen(false)} className="btn-ghost">Close</button>
+               <button
+                 onClick={() => {
+                   setSmartCropAssistantOpen(false);
+                   void processAllSamples();
+                 }}
+                 disabled={isProcessingAll}
+                 className="btn-primary"
+                 style={{ padding: '8px 20px', fontSize: 12, opacity: isProcessingAll ? 0.6 : 1 }}
+               >
+                 {allReady ? 'Process All (AI Crop)' : `Process All (${readyCount > 0 ? readyCount + ' learned, rest auto' : 'auto-detect all'})`}
+               </button>
+             </div>
+          </div>
+        </div>
+        );
+      })()}
        <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexShrink: 0 }}>
           <button
             type="button"
@@ -1097,11 +1514,12 @@ export default function DataCollection({ projectId, architecture }: { projectId:
              <>
                <button 
                   onClick={() => fileInputRef.current?.click()}
-                  style={{ background: 'rgba(157,39,222,0.1)', color: '#9D27DE', border: '1px solid rgba(157,39,222,0.3)', borderRadius: 8, padding: '0 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}
+                  disabled={isProcessingAll}
+                  style={{ background: 'rgba(157,39,222,0.1)', color: '#9D27DE', border: '1px solid rgba(157,39,222,0.3)', borderRadius: 8, padding: '0 16px', cursor: isProcessingAll ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, opacity: isProcessingAll ? 0.6 : 1 }}
                >
-                  <Upload size={16} /> Upload Dataset
+                  <Upload size={16} /> Upload Dataset (Zip or Images)
                </button>
-               <input type="file" ref={fileInputRef} multiple accept="image/*" onChange={handleFileUpload} style={{ display: 'none' }} />
+               <input type="file" ref={fileInputRef} multiple accept="image/*,.zip" onChange={handleFileUpload} style={{ display: 'none' }} />
                <button 
                   onClick={handleSnapshot}
                   className="btn-primary"
@@ -1460,9 +1878,25 @@ export default function DataCollection({ projectId, architecture }: { projectId:
           {/* Dataset Sidebar */}
           {inputType === 'Image' && (
              <div style={{ width: 240, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                   <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(242,242,240,0.5)', textTransform: 'uppercase' }}>Dataset Queue</span>
-                   <span style={{ fontSize: 10, background: 'rgba(157,39,222,0.2)', color: '#9D27DE', padding: '2px 6px', borderRadius: 4 }}>{dataset.length} pending</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(242,242,240,0.5)', textTransform: 'uppercase' }}>Dataset Queue</span>
+                      <span style={{ fontSize: 10, background: 'rgba(157,39,222,0.2)', color: '#9D27DE', padding: '2px 6px', borderRadius: 4 }}>{dataset.length} pending</span>
+                   </div>
+                   {dataset.length > 0 && (
+                     <div style={{ display: 'flex', gap: 6 }}>
+                        <button onClick={() => setSmartCropAssistantOpen(true)} className="btn-ghost" style={{ flex: 1, fontSize: 10, padding: '6px 8px' }}>Smart Crop</button>
+                        <button 
+                          onClick={() => void processAllSamples()} 
+                          disabled={isProcessingAll}
+                          className="btn-primary" 
+                          style={{ flex: 1, fontSize: 10, padding: '6px 8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, opacity: isProcessingAll ? 0.6 : 1 }}
+                        >
+                          {isProcessingAll ? <RefreshCw size={10} style={{ animation: "spin 1s linear infinite" }} /> : <Save size={10} />}
+                          Process All
+                        </button>
+                     </div>
+                   )}
                 </div>
                 <div style={{ flex: 1, overflowY: 'auto', display: 'grid', gridTemplateColumns: '1fr', gap: 8, paddingRight: 4 }}>
                    {dataset.map(item => (
@@ -1479,7 +1913,7 @@ export default function DataCollection({ projectId, architecture }: { projectId:
                          }}
                       >
                          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                            <img src={item.url} style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 4 }} alt="Preview" />
+                            <img src={item.url} style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 4, cursor: 'pointer' }} onClick={() => setPreviewImageModal({ url: item.url, label: item.label || 'Unknown' })} alt="Preview" />
                             <div style={{ flex: 1, minWidth: 0 }}>
                                <p style={{ fontSize: 11, fontWeight: 600, color: item.uploadStatus === 'error' ? '#EF4444' : '#F2F2F0', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.label}</p>
                                <p style={{ fontSize: 9, color: 'rgba(242,242,240,0.4)', margin: '2px 0 0' }}>
@@ -1514,325 +1948,293 @@ export default function DataCollection({ projectId, architecture }: { projectId:
        </div>
        </>
        ) : (
-       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: 10, overflow: "hidden", background: "#0D0018", borderRadius: 12, border: "1px solid rgba(157,39,222,0.15)", padding: "12px 10px 12px 12px", boxSizing: "border-box" }}>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
-             <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(242,242,240,0.85)", display: "flex", alignItems: "center", gap: 8 }}>
-                <Database size={14} /> {samples} samples in project
-             </span>
-             <button type="button" onClick={() => void loadCloudSamples()} disabled={loadingCloud} style={{ background: "rgba(157,39,222,0.12)", border: "1px solid rgba(157,39,222,0.35)", color: "#E9D5FF", borderRadius: 8, padding: "6px 12px", fontSize: 11, cursor: loadingCloud ? "wait" : "pointer", display: "flex", alignItems: "center", gap: 6 }}>
-                <RefreshCw size={12} style={{ animation: loadingCloud ? "spin 1s linear infinite" : "none" }} /> Refresh
-             </button>
+<div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden", background: "#0D0018", borderRadius: 14, border: "1px solid rgba(157,39,222,0.12)", boxSizing: "border-box" }}>
+
+  {/* -- HEADER -- */}
+  <div style={{ padding: "14px 16px 12px", background: "linear-gradient(135deg, rgba(157,39,222,0.08) 0%, rgba(59,130,246,0.04) 100%)", borderBottom: "1px solid rgba(157,39,222,0.1)", flexShrink: 0 }}>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(157,39,222,0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <Database size={16} color="#c084fc" />
+        </div>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#F2F2F0" }}>Cloud Library</div>
+          <div style={{ fontSize: 11, color: "rgba(242,242,240,0.5)" }}>
+            {samples} samples · {distinctCloudLabels.length} class{distinctCloudLabels.length !== 1 ? "es" : ""}
           </div>
-          <input
-             value={cloudFilter}
-             onChange={(e) => setCloudFilter(e.target.value)}
-             placeholder="Filter by label, id, or architecture…"
-             style={{ width: "100%", flexShrink: 0, background: "#050008", border: "1px solid rgba(157,39,222,0.25)", color: "#F2F2F0", padding: "8px 10px", borderRadius: 8, fontSize: 12, outline: "none", boxSizing: "border-box" }}
-          />
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", flexShrink: 0, paddingBottom: 8, borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-             <span style={{ fontSize: 11, color: "rgba(242,242,240,0.55)", fontFamily: "JetBrains Mono, monospace" }}>{selectedCloudIds.size} selected</span>
-             <button type="button" onClick={selectAllFiltered} className="btn-ghost" style={{ fontSize: 11, padding: "4px 10px" }}>Select all filtered</button>
-             <button type="button" onClick={clearCloudSelection} className="btn-ghost" style={{ fontSize: 11, padding: "4px 10px" }}>Clear selection</button>
-             <button type="button" onClick={() => openRelabel(Array.from(selectedCloudIds))} disabled={selectedCloudIds.size === 0} className="btn-ghost" style={{ fontSize: 11, padding: "4px 10px", opacity: selectedCloudIds.size ? 1 : 0.4 }}><Pencil size={12} style={{ display: "inline", marginRight: 4, verticalAlign: "middle" }} />Bulk relabel</button>
-             <button type="button" onClick={() => void bulkDeleteSelected()} disabled={selectedCloudIds.size === 0} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 6, border: "1px solid rgba(239,68,68,0.35)", background: "rgba(239,68,68,0.08)", color: "#fecaca", cursor: selectedCloudIds.size ? "pointer" : "not-allowed", opacity: selectedCloudIds.size ? 1 : 0.4 }}>Bulk delete</button>
-             <select value={appendDsId} onChange={(e) => setAppendDsId(e.target.value)} style={{ minWidth: 180, maxWidth: 260, background: "#050008", border: "1px solid rgba(157,39,222,0.25)", color: "#F2F2F0", padding: "4px 8px", borderRadius: 6, fontSize: 11 }}>
-                <option value="">Add selection to saved dataset…</option>
-                {savedDatasetsGrouped.map(([gLabel, list]) => (
-                   <optgroup key={gLabel} label={gLabel === "Other snapshots" ? "Other / mixed" : gLabel}>
-                      {list.map((ds) => (
-                         <option key={ds.id} value={ds.id}>{ds.name} · {(ds.sampleIds || []).length} imgs</option>
-                      ))}
-                   </optgroup>
-                ))}
-             </select>
-             <button type="button" onClick={() => void addSelectionToSavedDataset()} disabled={!appendDsId || selectedCloudIds.size === 0} className="btn-primary" style={{ fontSize: 11, padding: "4px 12px", opacity: appendDsId && selectedCloudIds.size ? 1 : 0.5 }}>Append</button>
-          </div>
-          <button type="button" onClick={() => setShowCloudAdvanced((v) => !v)} style={{ alignSelf: "flex-start", background: "none", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(242,242,240,0.65)", borderRadius: 8, padding: "6px 12px", fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
-             <Settings2 size={14} /> Advanced options
+        </div>
+      </div>
+      <button type="button" onClick={() => void loadCloudSamples()} disabled={loadingCloud}
+        style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#E9D5FF", borderRadius: 8, padding: "7px 14px", fontSize: 11, cursor: loadingCloud ? "wait" : "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+        <RefreshCw size={12} style={{ animation: loadingCloud ? "spin 1s linear infinite" : "none" }} /> Refresh
+      </button>
+    </div>
+    {/* Class distribution pills */}
+    {(() => {
+      const groups: Record<string, number> = {};
+      cloudSamples.forEach((s) => { const l = (s.label || "").trim(); if (l) groups[l] = (groups[l] || 0) + 1; });
+      const entries = Object.entries(groups).sort((a, b) => b[1] - a[1]);
+      if (entries.length === 0) return null;
+      const colors = ["#c084fc","#60a5fa","#34d399","#fbbf24","#fb923c","#f87171","#a78bfa","#2dd4bf"];
+      return (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {entries.map(([label, count], i) => (
+            <div key={label} style={{ display: "flex", alignItems: "center", gap: 5, background: "rgba(0,0,0,0.3)", borderRadius: 20, padding: "4px 10px 4px 6px", border: `1px solid ${colors[i % colors.length]}22` }}>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: colors[i % colors.length], flexShrink: 0 }} />
+              <span style={{ fontSize: 11, color: "#F2F2F0", fontWeight: 600 }}>{label}</span>
+              <span style={{ fontSize: 10, color: "rgba(242,242,240,0.4)" }}>{count}</span>
+              <button type="button" onClick={() => void clearLabelSamples(label)} title={`Delete all "${label}"`}
+                style={{ background: "none", border: "none", color: "rgba(239,68,68,0.4)", cursor: "pointer", padding: 0, display: "flex", marginLeft: 2 }}>
+                <Trash2 size={10} />
+              </button>
+            </div>
+          ))}
+        </div>
+      );
+    })()}
+  </div>
+
+  {/* -- SEARCH + ACTIONS -- */}
+  <div style={{ padding: "10px 16px", borderBottom: "1px solid rgba(255,255,255,0.04)", display: "flex", flexDirection: "column", gap: 8, flexShrink: 0 }}>
+    <input value={cloudFilter} onChange={(e) => setCloudFilter(e.target.value)}
+      placeholder="Search by label or ID..."
+      style={{ width: "100%", background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.06)", color: "#F2F2F0", padding: "8px 12px", borderRadius: 8, fontSize: 12, outline: "none", boxSizing: "border-box" }}
+    />
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+      <button type="button" onClick={selectAllFiltered}
+        style={{ fontSize: 11, padding: "5px 10px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)", color: "rgba(242,242,240,0.6)", cursor: "pointer" }}>
+        Select all
+      </button>
+      {selectedCloudIds.size > 0 && (<>
+        <button type="button" onClick={clearCloudSelection}
+          style={{ fontSize: 11, padding: "5px 10px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)", color: "rgba(242,242,240,0.6)", cursor: "pointer" }}>
+          Clear
+        </button>
+        <span style={{ fontSize: 11, color: "#c084fc", fontWeight: 600 }}>{selectedCloudIds.size} selected</span>
+        <div style={{ width: 1, height: 16, background: "rgba(255,255,255,0.08)" }} />
+        <button type="button" onClick={() => openRelabel(Array.from(selectedCloudIds))}
+          style={{ fontSize: 11, padding: "5px 10px", borderRadius: 6, border: "1px solid rgba(157,39,222,0.25)", background: "rgba(157,39,222,0.08)", color: "#E9D5FF", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+          <Pencil size={11} /> Relabel
+        </button>
+        <button type="button" onClick={() => void bulkDeleteSelected()}
+          style={{ fontSize: 11, padding: "5px 10px", borderRadius: 6, border: "1px solid rgba(239,68,68,0.25)", background: "rgba(239,68,68,0.06)", color: "#fca5a5", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+          <Trash2 size={11} /> Delete
+        </button>
+        <div style={{ width: 1, height: 16, background: "rgba(255,255,255,0.08)" }} />
+        <select value={appendDsId} onChange={(e) => setAppendDsId(e.target.value)}
+          style={{ maxWidth: 200, background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.08)", color: "#F2F2F0", padding: "5px 8px", borderRadius: 6, fontSize: 11 }}>
+          <option value="">Add to snapshot...</option>
+          {savedDatasetsGrouped.map(([gLabel, list]) => (
+            <optgroup key={gLabel} label={gLabel === "Other snapshots" ? "Other / mixed" : gLabel}>
+              {list.map((ds) => (<option key={ds.id} value={ds.id}>{ds.name} · {(ds.sampleIds || []).length}</option>))}
+            </optgroup>
+          ))}
+        </select>
+        {appendDsId && <button type="button" onClick={() => void addSelectionToSavedDataset()} className="btn-primary" style={{ fontSize: 11, padding: "5px 12px" }}>Append</button>}
+      </>)}
+    </div>
+  </div>
+
+  {/* -- SCROLLABLE CONTENT -- */}
+  <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", padding: "12px 16px 16px", boxSizing: "border-box", scrollbarGutter: "stable" }}>
+
+    {/* -- Save Snapshot Card -- */}
+    <div style={{ marginBottom: 16, padding: "14px 16px", background: "rgba(157,39,222,0.05)", borderRadius: 12, border: "1px solid rgba(157,39,222,0.1)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <Save size={14} color="#c084fc" />
+        <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(242,242,240,0.8)" }}>Save Snapshot</span>
+        <span style={{ fontSize: 10, color: "rgba(242,242,240,0.3)" }}>- freeze samples for training</span>
+      </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <select value={snapshotLabelPick} onChange={(e) => setSnapshotLabelPick(e.target.value)}
+          disabled={distinctCloudLabels.length === 0}
+          style={{ minWidth: 120, background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.08)", color: "#F2F2F0", padding: "7px 10px", borderRadius: 8, fontSize: 12 }}>
+          {distinctCloudLabels.length === 0 && <option value="">No classes yet</option>}
+          {distinctCloudLabels.map((l) => (<option key={l} value={l}>{l}</option>))}
+        </select>
+        <input placeholder="Snapshot name (optional)" value={datasetName} onChange={(e) => setDatasetName(e.target.value)}
+          style={{ flex: 1, minWidth: 140, background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.08)", color: "#F2F2F0", padding: "7px 10px", borderRadius: 8, fontSize: 12, outline: "none" }}
+        />
+        <button type="button" onClick={() => void saveLabelSnapshot()} disabled={!normLabel(snapshotLabelPick)} className="btn-primary"
+          style={{ fontSize: 11, padding: "7px 16px", opacity: normLabel(snapshotLabelPick) ? 1 : 0.4, whiteSpace: "nowrap" }}>
+          Save class
+        </button>
+        {selectedCloudIds.size > 0 && datasetName.trim() && (
+          <button type="button" onClick={() => void saveSelectionAsNewDataset()}
+            style={{ fontSize: 11, padding: "7px 14px", borderRadius: 8, border: "1px solid rgba(59,130,246,0.3)", background: "rgba(59,130,246,0.08)", color: "#93c5fd", cursor: "pointer", fontWeight: 600, whiteSpace: "nowrap" }}>
+            Save selection ({selectedCloudIds.size})
           </button>
-          {showCloudAdvanced && (
-             <div style={{ flexShrink: 0, background: "rgba(157,39,222,0.05)", border: "1px solid rgba(157,39,222,0.15)", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 10 }}>
-                {!architecture && <div style={{ fontSize: 11, color: "#f59e0b" }}>Select an architecture in the Training tab for best capture defaults.</div>}
-                {cloudSamples.length > 0 && (
-                   <>
-                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-                      <Save size={14} style={{ color: "rgba(157,39,222,0.6)", flexShrink: 0 }} />
-                      <input placeholder="Dataset snapshot name" value={datasetName} onChange={(e) => setDatasetName(e.target.value)} style={{ flex: 1, minWidth: 160, background: "rgba(0,0,0,0.35)", border: "1px solid rgba(157,39,222,0.2)", color: "#F2F2F0", padding: "6px 10px", borderRadius: 6, fontSize: 12 }} />
-                      <button type="button" onClick={() => void saveSelectionAsNewDataset()} disabled={!datasetName.trim() || selectedCloudIds.size === 0} style={{ fontSize: 11, padding: "6px 14px", borderRadius: 6, border: datasetName.trim() && selectedCloudIds.size ? "1px solid rgba(59,130,246,0.45)" : "1px solid rgba(255,255,255,0.08)", background: datasetName.trim() && selectedCloudIds.size ? "rgba(59,130,246,0.12)" : "transparent", color: datasetName.trim() && selectedCloudIds.size ? "#93c5fd" : "rgba(242,242,240,0.35)", cursor: datasetName.trim() && selectedCloudIds.size ? "pointer" : "not-allowed", fontWeight: 600 }}>Save selection as new dataset</button>
-                      <button type="button" onClick={() => void saveAsDataset()} disabled={!datasetName.trim()} style={{ fontSize: 11, padding: "6px 14px", borderRadius: 6, border: datasetName.trim() ? "1px solid rgba(34,197,94,0.35)" : "1px solid rgba(255,255,255,0.08)", background: datasetName.trim() ? "rgba(34,197,94,0.12)" : "transparent", color: datasetName.trim() ? "#86efac" : "rgba(242,242,240,0.35)", cursor: datasetName.trim() ? "pointer" : "not-allowed", fontWeight: 600 }}>Save entire cloud</button>
-                   </div>
-                   <p style={{ margin: 0, fontSize: 10, color: "rgba(242,242,240,0.45)", lineHeight: 1.45 }}>Selection save requires <strong>one exact label</strong> across all checked tiles. <strong style={{ color: "#86efac" }}>Save entire cloud</strong> is a multi-label backup (appears under Other).</p>
-                   </>
-                )}
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                   <span style={{ fontSize: 10, color: "rgba(242,242,240,0.45)", width: "100%" }}>Labels in cloud (delete all with one action)</span>
-                   {(() => {
-                      const groups: Record<string, number> = {};
-                      cloudSamples.forEach((s) => { groups[s.label] = (groups[s.label] || 0) + 1; });
-                      const entries = Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0]));
-                      if (entries.length === 0) return <span style={{ fontSize: 11, color: "rgba(242,242,240,0.35)" }}>No samples yet.</span>;
-                      return entries.map(([label, count]) => (
-                         <div key={label} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(157,39,222,0.08)", borderRadius: 6, padding: "4px 8px", border: "1px solid rgba(157,39,222,0.15)" }}>
-                            <span style={{ fontSize: 11, color: "#E0D8F0", fontWeight: 600 }}>{label}</span>
-                            <span style={{ fontSize: 10, color: "rgba(242,242,240,0.4)" }}>×{count}</span>
-                            <button type="button" onClick={() => void clearLabelSamples(label)} title={`Delete all "${label}"`} style={{ background: "none", border: "none", color: "rgba(239,68,68,0.55)", cursor: "pointer", padding: 0, display: "flex" }}><Trash2 size={12} /></button>
-                         </div>
-                      ));
-                   })()}
+        )}
+        <button type="button" onClick={() => void saveAsDataset()} disabled={!datasetName.trim()}
+          style={{ fontSize: 11, padding: "7px 14px", borderRadius: 8, border: datasetName.trim() ? "1px solid rgba(255,255,255,0.1)" : "1px solid rgba(255,255,255,0.04)", background: "rgba(255,255,255,0.03)", color: datasetName.trim() ? "rgba(242,242,240,0.65)" : "rgba(242,242,240,0.2)", cursor: datasetName.trim() ? "pointer" : "not-allowed", whiteSpace: "nowrap" }}>
+          Save all
+        </button>
+      </div>
+    </div>
+
+    {/* -- Saved Snapshots -- */}
+    <div style={{ marginBottom: 20 }}>
+      <button type="button" aria-expanded={savedSnapshotsExpanded} onClick={() => setSavedSnapshotsExpanded((v) => !v)}
+        style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: savedSnapshotsExpanded ? 10 : 0, width: "100%", background: "none", border: "none", padding: "4px 0", cursor: "pointer", textAlign: "left" }}>
+        <FolderOpen size={14} style={{ color: "rgba(157,39,222,0.7)", flexShrink: 0 }} />
+        <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(242,242,240,0.75)", letterSpacing: "0.02em" }}>
+          Saved Snapshots ({savedDatasets.length})
+        </span>
+        <ChevronDown size={16} aria-hidden style={{ color: "rgba(242,242,240,0.4)", marginLeft: "auto", flexShrink: 0, transform: savedSnapshotsExpanded ? "rotate(0deg)" : "rotate(-90deg)", transition: "transform 0.2s ease" }} />
+      </button>
+      {savedSnapshotsExpanded && (<>
+        {savedDatasets.length === 0 && (
+          <p style={{ fontSize: 11, color: "rgba(242,242,240,0.35)", margin: "4px 0" }}>No snapshots yet. Use "Save Snapshot" above.</p>
+        )}
+        {savedDatasetsGrouped.map(([groupLabel, list]) => (
+          <div key={groupLabel} style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#D8B4FE", marginBottom: 8, paddingBottom: 4, borderBottom: "1px solid rgba(157,39,222,0.15)" }}>
+              {groupLabel === "Other snapshots" ? "Other / multi-label" : groupLabel}{" "}
+              <span style={{ fontWeight: 400, color: "rgba(242,242,240,0.4)" }}>({list.length})</span>
+            </div>
+            {list.map((ds) => {
+              const ids = ds.sampleIds || [];
+              let resolved = 0;
+              const liveLabels: Record<string, number> = {};
+              for (const id of ids) {
+                const s = cloudSampleById.get(id);
+                if (s) { resolved++; const lb = (s.label && String(s.label).trim()) || "-"; liveLabels[lb] = (liveLabels[lb] || 0) + 1; }
+              }
+              const remote = datasetRemoteLabels[ds.id];
+              const hasRemote = remote && Object.keys(remote).length > 0;
+              const labelMap = hasRemote ? remote : resolved > 0 ? liveLabels : ds.labels || {};
+              const missing = ids.length - resolved;
+              const labelBreakdown = Object.entries(labelMap).sort((a, b) => b[1] - a[1]).map(([lab, c]) => `${lab} ×${c}`).join(" · ");
+              return (
+                <div key={ds.id} style={{ marginBottom: 8, borderRadius: 10, border: "1px solid rgba(255,255,255,0.06)", background: "rgba(0,0,0,0.2)", overflow: "hidden" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px" }}>
+                    <button type="button" onClick={() => toggleDatasetSelection(ds.id, ds.selected)}
+                      style={{ background: "none", border: "none", color: ds.selected ? "#4ade80" : "rgba(242,242,240,0.25)", cursor: "pointer", padding: 0, display: "flex" }} title="Toggle for training">
+                      {ds.selected ? <CheckCircle size={16} /> : <Circle size={16} />}
+                    </button>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: "#F2F2F0", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+                        {ds.name}
+                        {normLabel(ds.snapshotLabel) && (
+                          <span style={{ fontSize: 9, fontWeight: 600, padding: "2px 8px", borderRadius: 6, background: "rgba(157,39,222,0.2)", color: "#f5e1ff" }}>{ds.snapshotLabel}</span>
+                        )}
+                      </p>
+                      <p style={{ margin: "3px 0 0", fontSize: 10, color: "rgba(242,242,240,0.4)" }}>
+                        {ids.length} image{ids.length === 1 ? "" : "s"} · {resolved} in project
+                        {missing > 0 && <span style={{ color: "rgba(251,191,36,0.85)" }}> · {missing} missing</span>}
+                        {ds.createdAt?.seconds ? ` · ${new Date(ds.createdAt.seconds * 1000).toLocaleDateString()}` : ""}
+                      </p>
+                      {labelBreakdown && <p style={{ margin: "4px 0 0", fontSize: 10, color: "rgba(232,213,255,0.85)", fontWeight: 600 }}>{labelBreakdown}</p>}
+                    </div>
+                    <button type="button" onClick={() => {
+                      if (expandedPreview?.datasetId === ds.id) { expandPreviewSeq.current += 1; setExpandedPreview(null); setExpandedPreviewLoading(false); return; }
+                      const seq = ++expandPreviewSeq.current;
+                      setExpandedPreviewLoading(true); setExpandedPreview({ datasetId: ds.id, samples: [] });
+                      void (async () => { const slice = ids.slice(0, 48); const fetched = await fetchSamplesByIds(slice); if (seq !== expandPreviewSeq.current) return; const m = new Map(fetched.map((s) => [s.id, s])); setExpandedPreview({ datasetId: ds.id, samples: slice.map((id) => m.get(id) ?? null) }); setExpandedPreviewLoading(false); })();
+                    }} className="btn-ghost" style={{ fontSize: 10, padding: "4px 8px" }}>
+                      {expandedPreview?.datasetId === ds.id ? "Hide" : "Preview"}
+                    </button>
+                    <button type="button" onClick={() => void deleteSavedDataset(ds.id, ds.name)}
+                      style={{ background: "none", border: "none", color: "rgba(239,68,68,0.4)", cursor: "pointer", padding: 4 }} title="Delete snapshot">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                  {expandedPreview?.datasetId === ds.id && (
+                    <div style={{ padding: "0 12px 10px", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                      {expandedPreviewLoading && expandedPreview.samples.length === 0 && (
+                        <p style={{ fontSize: 11, color: "rgba(157,39,222,0.85)", margin: "8px 0" }}>Loading...</p>
+                      )}
+                      {!(expandedPreviewLoading && expandedPreview.samples.length === 0) && (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                          {expandedPreview.samples.map((cs, idx) => {
+                            const sid = ids[idx] ?? `idx-${idx}`;
+                            return (
+                                <div key={`${ds.id}-${idx}-${sid}`} title={sid} style={{ width: 56, height: 56, borderRadius: 6, overflow: "hidden", border: "1px solid rgba(157,39,222,0.2)", background: "#000", flexShrink: 0, position: "relative" }}>
+                                  {cs?.imageUrl ? (
+                                    <img 
+                                      src={cs.imageUrl} 
+                                      alt="" 
+                                      style={{ width: "100%", height: "100%", objectFit: "cover", cursor: 'pointer' }} 
+                                      onClick={() => setPreviewImageModal({ url: cs.imageUrl!, label: cs.label || 'Unknown' })}
+                                    />
+                                  ) : (
+                                    <div style={{ fontSize: 8, color: "rgba(242,242,240,0.35)", padding: 4 }}>n/a</div>
+                                  )}
+                                  {cs?.label && <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, fontSize: 7, padding: "2px 3px", background: "rgba(0,0,0,0.75)", color: "#f5e1ff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", pointerEvents: "none" }}>{cs.label}</div>}
+                                </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {ids.length > 48 && <p style={{ fontSize: 9, color: "rgba(242,242,240,0.3)", marginTop: 6 }}>Showing first 48 of {ids.length}.</p>}
+                    </div>
+                  )}
                 </div>
+              );
+            })}
+          </div>
+        ))}
+      </>)}
+    </div>
+
+    {/* -- Sample Grid -- */}
+    <div>
+      <p style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 700, color: "rgba(242,242,240,0.55)" }}>
+        All Samples ({filteredCloudSamples.length})
+      </p>
+      {samplesGroupedByLabel.map(([groupLabel, list]) => (
+        <div key={groupLabel} style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#E9D5FF", marginBottom: 8, paddingBottom: 6, borderBottom: "1px solid rgba(157,39,222,0.15)" }}>
+            {groupLabel} <span style={{ fontWeight: 400, color: "rgba(242,242,240,0.4)" }}>({list.length})</span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 8 }}>
+            {list.slice(0, expandedCloudGroups.has(groupLabel) ? list.length : 10).map((s) => (
+              <div key={s.id} onClick={() => toggleCloudSelect(s.id)}
+                style={{ background: selectedCloudIds.has(s.id) ? "rgba(157,39,222,0.08)" : "rgba(0,0,0,0.2)", border: selectedCloudIds.has(s.id) ? "1px solid rgba(157,39,222,0.4)" : "1px solid rgba(255,255,255,0.05)", borderRadius: 10, overflow: "hidden", cursor: "pointer", transition: "all 0.15s" }}>
+                <div style={{ position: "relative", aspectRatio: "1", background: "#000", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {s.imageUrl ? (
+                    <img src={s.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", cursor: 'pointer' }} onClick={() => setPreviewImageModal({ url: s.imageUrl!, label: s.label || 'Unknown' })} />
+                  ) : (
+                    <span style={{ fontSize: 10, color: "rgba(242,242,240,0.3)", padding: 8, textAlign: "center" }}>{s.type || "data"}</span>
+                  )}
+                  <div style={{ position: "absolute", top: 4, left: 4, width: 18, height: 18, borderRadius: 4, background: selectedCloudIds.has(s.id) ? "#9D27DE" : "rgba(0,0,0,0.5)", border: selectedCloudIds.has(s.id) ? "none" : "1px solid rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    {selectedCloudIds.has(s.id) && <Check size={12} color="#fff" />}
+                  </div>
+                  <div style={{ position: "absolute", top: 4, right: 4, display: "flex", gap: 3 }}>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); openRelabel([s.id]); }} title="Relabel"
+                      style={{ background: "rgba(0,0,0,0.6)", border: "none", borderRadius: 4, padding: 3, color: "#e9d5ff", cursor: "pointer" }}><Pencil size={10} /></button>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); void deleteCloudSampleOne(s.id); }} title="Delete"
+                      style={{ background: "rgba(0,0,0,0.6)", border: "none", borderRadius: 4, padding: 3, color: "#fca5a5", cursor: "pointer" }}><Trash2 size={10} /></button>
+                  </div>
+                </div>
+                <div style={{ padding: "6px 8px" }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: "#F2F2F0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.label}</div>
+                  <div style={{ fontSize: 9, color: "rgba(242,242,240,0.35)", marginTop: 2 }}>{formatSampleDate(s)}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          {!expandedCloudGroups.has(groupLabel) && list.length > 10 && (
+             <div style={{ marginTop: 12 }}>
+                <button 
+                  onClick={() => setExpandedCloudGroups(prev => new Set(prev).add(groupLabel))} 
+                  className="btn-ghost"
+                  style={{ width: '100%', padding: '8px', fontSize: 11, border: '1px dashed rgba(157,39,222,0.3)' }}
+                >
+                  Show {list.length - 10} remaining {groupLabel} samples
+                </button>
              </div>
           )}
-          <div
-             style={{
-                flex: 1,
-                minHeight: 0,
-                minWidth: 0,
-                overflowY: "auto",
-                overflowX: "hidden",
-                paddingTop: 4,
-                paddingRight: 6,
-                paddingBottom: 8,
-                boxSizing: "border-box",
-                scrollbarGutter: "stable",
-             }}
-          >
-             <div style={{ flexShrink: 0, marginBottom: 16, padding: 12, background: "rgba(157,39,222,0.07)", borderRadius: 10, border: "1px solid rgba(157,39,222,0.22)" }}>
-                <p style={{ margin: "0 0 10px", fontSize: 10, color: "rgba(242,242,240,0.5)", textTransform: "uppercase", letterSpacing: "0.08em" }}>New label snapshot</p>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
-                   <span style={{ fontSize: 11, color: "rgba(242,242,240,0.75)" }}>Exact label</span>
-                   <select
-                      value={snapshotLabelPick}
-                      onChange={(e) => setSnapshotLabelPick(e.target.value)}
-                      disabled={distinctCloudLabels.length === 0}
-                      style={{ minWidth: 140, background: "#050008", border: "1px solid rgba(157,39,222,0.3)", color: "#F2F2F0", padding: "6px 10px", borderRadius: 8, fontSize: 12 }}
-                   >
-                      {distinctCloudLabels.map((l) => (
-                         <option key={l} value={l}>{l}</option>
-                      ))}
-                   </select>
-                   <input placeholder="Optional snapshot name" value={datasetName} onChange={(e) => setDatasetName(e.target.value)} style={{ flex: 1, minWidth: 160, background: "#050008", border: "1px solid rgba(157,39,222,0.25)", color: "#F2F2F0", padding: "6px 10px", borderRadius: 8, fontSize: 12 }} />
-                   <button
-                      type="button"
-                      onClick={() => void saveLabelSnapshot()}
-                      disabled={!normLabel(snapshotLabelPick)}
-                      className="btn-primary"
-                      style={{ fontSize: 11, padding: "6px 14px", opacity: normLabel(snapshotLabelPick) ? 1 : 0.45 }}
-                   >
-                      Save label snapshot
-                   </button>
-                </div>
-                <p style={{ margin: "8px 0 0", fontSize: 10, color: "rgba(242,242,240,0.38)", lineHeight: 1.45 }}>Stores every project sample whose label equals this string exactly (trimmed). Appears below under the same label heading.</p>
-             </div>
-
-             <div style={{ marginBottom: 20 }}>
-                <button
-                   type="button"
-                   aria-expanded={savedSnapshotsExpanded}
-                   onClick={() => setSavedSnapshotsExpanded((v) => !v)}
-                   style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      marginBottom: savedSnapshotsExpanded ? 10 : 0,
-                      flexWrap: "wrap",
-                      width: "100%",
-                      background: "none",
-                      border: "none",
-                      padding: "4px 0",
-                      cursor: "pointer",
-                      textAlign: "left",
-                   }}
-                >
-                   <FolderOpen size={14} style={{ color: "rgba(157,39,222,0.7)", flexShrink: 0 }} />
-                   <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(242,242,240,0.7)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                      Saved label snapshots ({savedDatasets.length})
-                   </span>
-                   <span style={{ fontSize: 9, color: "rgba(242,242,240,0.35)" }}>Grouped by exact label · live sync</span>
-                   <ChevronDown
-                      size={16}
-                      aria-hidden
-                      style={{
-                         color: "rgba(242,242,240,0.45)",
-                         marginLeft: "auto",
-                         flexShrink: 0,
-                         transform: savedSnapshotsExpanded ? "rotate(0deg)" : "rotate(-90deg)",
-                         transition: "transform 0.2s ease",
-                      }}
-                   />
-                </button>
-                {savedSnapshotsExpanded && (
-                   <>
-                {savedDatasets.length === 0 && (
-                   <p style={{ fontSize: 11, color: "rgba(242,242,240,0.35)" }}>No snapshots yet. Save a label snapshot above, or use Advanced.</p>
-                )}
-                {savedDatasetsGrouped.map(([groupLabel, list]) => (
-                   <div key={groupLabel} style={{ marginBottom: 14 }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: "#D8B4FE", marginBottom: 8, paddingBottom: 4, borderBottom: "1px solid rgba(157,39,222,0.18)" }}>
-                         {groupLabel === "Other snapshots" ? "Other / multi-label / legacy" : groupLabel}{" "}
-                         <span style={{ fontWeight: 500, color: "rgba(242,242,240,0.4)" }}>({list.length} snapshot{list.length === 1 ? "" : "s"})</span>
-                      </div>
-                      {list.map((ds) => {
-                   const ids = ds.sampleIds || [];
-                   let resolved = 0;
-                   const liveLabels: Record<string, number> = {};
-                   for (const id of ids) {
-                      const s = cloudSampleById.get(id);
-                      if (s) {
-                         resolved++;
-                         const lb = (s.label && String(s.label).trim()) || "—";
-                         liveLabels[lb] = (liveLabels[lb] || 0) + 1;
-                      }
-                   }
-                   const remote = datasetRemoteLabels[ds.id];
-                   const hasRemote = remote && Object.keys(remote).length > 0;
-                   const labelMap = hasRemote ? remote : resolved > 0 ? liveLabels : ds.labels || {};
-                   const classCount = Object.keys(labelMap).length;
-                   const missing = ids.length - resolved;
-                   const labelBreakdown = Object.entries(labelMap)
-                      .sort((a, b) => b[1] - a[1])
-                      .map(([lab, c]) => `${lab} ×${c}`)
-                      .join(" · ");
-                   return (
-                   <div key={ds.id} style={{ marginBottom: 10, borderRadius: 10, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(0,0,0,0.25)", overflow: "hidden" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: 10 }}>
-                         <button type="button" onClick={() => toggleDatasetSelection(ds.id, ds.selected)} style={{ background: "none", border: "none", color: ds.selected ? "#4ade80" : "rgba(242,242,240,0.25)", cursor: "pointer", padding: 0, display: "flex" }} title="Training selection">
-                            {ds.selected ? <CheckCircle size={16} /> : <Circle size={16} />}
-                         </button>
-                         <div style={{ flex: 1, minWidth: 0 }}>
-                            <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: "#F2F2F0", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
-                               {ds.name}
-                               {normLabel(ds.snapshotLabel) ? (
-                                  <span style={{ fontSize: 9, fontWeight: 600, padding: "2px 8px", borderRadius: 6, background: "rgba(157,39,222,0.28)", color: "#f5e1ff" }}>Exact label: {ds.snapshotLabel}</span>
-                               ) : null}
-                            </p>
-                            <p style={{ margin: "4px 0 0", fontSize: 10, color: "rgba(242,242,240,0.45)" }}>
-                               {ids.length} image{ids.length === 1 ? "" : "s"} in snapshot · {resolved} in project now
-                               {missing > 0 ? <span style={{ color: "rgba(251,191,36,0.9)" }}> · {missing} missing</span> : null}
-                               {ds.createdAt?.seconds ? ` · ${new Date(ds.createdAt.seconds * 1000).toLocaleString()}` : ""}
-                            </p>
-                            {labelBreakdown && (
-                               <p style={{ margin: "6px 0 0", fontSize: 11, color: "rgba(232,213,255,0.92)", fontWeight: 600 }}>Labels (from Firestore): {labelBreakdown}</p>
-                            )}
-                            {!normLabel(ds.snapshotLabel) && classCount > 1 && (
-                               <p style={{ margin: "4px 0 0", fontSize: 9, color: "rgba(242,242,240,0.5)", lineHeight: 1.45 }}>
-                                  Multi-label snapshot (e.g. full-cloud backup). New label snapshots use one exact class only.
-                               </p>
-                            )}
-                            {resolved > 0 && resolved < ids.length && (
-                               <p style={{ margin: "4px 0 0", fontSize: 9, color: "rgba(251,191,36,0.75)" }}>Some snapshot ids are no longer in the project; thumbnails load from Firestore in snapshot order.</p>
-                            )}
-                         </div>
-                         <button
-                            type="button"
-                            onClick={() => {
-                               if (expandedPreview?.datasetId === ds.id) {
-                                  expandPreviewSeq.current += 1;
-                                  setExpandedPreview(null);
-                                  setExpandedPreviewLoading(false);
-                                  return;
-                               }
-                               const seq = ++expandPreviewSeq.current;
-                               setExpandedPreviewLoading(true);
-                               setExpandedPreview({ datasetId: ds.id, samples: [] });
-                               void (async () => {
-                                  const slice = ids.slice(0, 48);
-                                  const fetched = await fetchSamplesByIds(slice);
-                                  if (seq !== expandPreviewSeq.current) return;
-                                  const m = new Map(fetched.map((s) => [s.id, s]));
-                                  const ordered = slice.map((id) => m.get(id) ?? null);
-                                  setExpandedPreview({ datasetId: ds.id, samples: ordered });
-                                  setExpandedPreviewLoading(false);
-                               })();
-                            }}
-                            className="btn-ghost"
-                            style={{ fontSize: 10, padding: "4px 8px" }}
-                         >
-                            {expandedPreview?.datasetId === ds.id ? "Collapse" : "Expand"}
-                         </button>
-                         <button type="button" onClick={() => void deleteSavedDataset(ds.id, ds.name)} style={{ background: "none", border: "none", color: "rgba(239,68,68,0.45)", cursor: "pointer", padding: 4 }} title="Delete snapshot"><Trash2 size={14} /></button>
-                      </div>
-                      {expandedPreview?.datasetId === ds.id && (
-                         <div style={{ padding: "0 10px 10px", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-                            <p style={{ fontSize: 10, color: "rgba(242,242,240,0.4)", margin: "8px 0" }}>
-                               Order matches the snapshot id list. Each tile is loaded by id from Firestore (image + label from the same document).
-                            </p>
-                            {expandedPreviewLoading && expandedPreview.samples.length === 0 && (
-                               <p style={{ fontSize: 11, color: "rgba(157,39,222,0.85)" }}>Loading thumbnails…</p>
-                            )}
-                            {!(expandedPreviewLoading && expandedPreview.samples.length === 0) && (
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                               {expandedPreview.samples.map((cs, idx) => {
-                                  const sid = ids[idx] ?? `idx-${idx}`;
-                                  return (
-                                     <div key={`${ds.id}-${idx}-${sid}`} title={sid} style={{ width: 64, height: 64, borderRadius: 6, overflow: "hidden", border: "1px solid rgba(157,39,222,0.25)", background: "#000", flexShrink: 0, position: "relative" }}>
-                                        {cs?.imageUrl ? <img src={cs.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ fontSize: 8, color: "rgba(242,242,240,0.4)", padding: 4, wordBreak: "break-all", lineHeight: 1.2 }}>missing</div>}
-                                        {cs?.label && (
-                                           <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, fontSize: 8, padding: "2px 4px", background: "rgba(0,0,0,0.75)", color: "#f5e1ff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cs.label}</div>
-                                        )}
-                                     </div>
-                                  );
-                               })}
-                            </div>
-                            )}
-                            {ids.length > 48 && <p style={{ fontSize: 9, color: "rgba(242,242,240,0.35)", marginTop: 6 }}>Showing first 48 of {ids.length}.</p>}
-                         </div>
-                      )}
-                   </div>
-                   );
-                })}
-                   </div>
-                ))}
-                   </>
-                )}
-             </div>
-
-             <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid rgba(157,39,222,0.2)" }}>
-                <p style={{ margin: "0 0 8px", fontSize: 10, color: "rgba(242,242,240,0.45)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Samples by label ({filteredCloudSamples.length} shown)</p>
-                {samplesGroupedByLabel.map(([groupLabel, list]) => (
-                   <div key={groupLabel} style={{ marginBottom: 18 }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: "#E9D5FF", marginBottom: 8, paddingBottom: 6, borderBottom: "1px solid rgba(157,39,222,0.2)" }}>{groupLabel} <span style={{ fontWeight: 500, color: "rgba(242,242,240,0.45)" }}>({list.length})</span></div>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12 }}>
-                         {list.map((s) => (
-                            <div key={s.id} style={{ background: "#050008", border: selectedCloudIds.has(s.id) ? "1px solid rgba(157,39,222,0.55)" : "1px solid rgba(255,255,255,0.06)", borderRadius: 10, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-                               <div style={{ position: "relative", aspectRatio: "4/3", background: "#000", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                                  {s.imageUrl ? (
-                                     <img src={s.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                                  ) : (
-                                     <span style={{ fontSize: 10, color: "rgba(242,242,240,0.35)", padding: 8, textAlign: "center" }}>{s.type || "sample"} · {s.label}</span>
-                                  )}
-                                  <label style={{ position: "absolute", top: 6, left: 6, background: "rgba(0,0,0,0.55)", borderRadius: 4, padding: 2, cursor: "pointer" }}>
-                                     <input type="checkbox" checked={selectedCloudIds.has(s.id)} onChange={() => toggleCloudSelect(s.id)} style={{ margin: 0 }} />
-                                  </label>
-                                  <div style={{ position: "absolute", top: 6, right: 6, display: "flex", gap: 4 }}>
-                                     <button type="button" onClick={() => openRelabel([s.id])} title="Relabel" style={{ background: "rgba(0,0,0,0.55)", border: "none", borderRadius: 4, padding: 4, color: "#e9d5ff", cursor: "pointer" }}><Pencil size={12} /></button>
-                                     <button type="button" onClick={() => void deleteCloudSampleOne(s.id)} title="Delete" style={{ background: "rgba(0,0,0,0.55)", border: "none", borderRadius: 4, padding: 4, color: "#fecaca", cursor: "pointer" }}><Trash2 size={12} /></button>
-                                  </div>
-                               </div>
-                               <div style={{ padding: 8, display: "flex", flexDirection: "column", gap: 4, fontSize: 10, color: "rgba(242,242,240,0.75)" }}>
-                                  <div style={{ fontWeight: 700, fontSize: 12, color: "#F2F2F0" }}>{s.label}</div>
-                                  <div style={{ color: "rgba(242,242,240,0.45)", lineHeight: 1.4 }}>{formatSampleDate(s)}</div>
-                                  <div style={{ color: "rgba(242,242,240,0.45)", lineHeight: 1.4 }}>ID: <span style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 9 }}>{s.id.slice(0, 12)}…</span></div>
-                                  {(s.arch || s.type || s.detection || s.resolution) && (
-                                     <div style={{ fontSize: 9, color: "rgba(157,39,222,0.85)", lineHeight: 1.45 }}>
-                                        {[s.arch, s.type, s.detection].filter(Boolean).join(" · ")}
-                                        {s.resolution ? ` · ${s.resolution.width}×${s.resolution.height}` : ""}
-                                     </div>
-                                  )}
-                                  {s.objects && s.objects.length > 0 && (
-                                     <div style={{ fontSize: 9, color: "rgba(134,239,172,0.9)" }}>FOMO: {s.objects.length} points</div>
-                                  )}
-                               </div>
-                            </div>
-                         ))}
-                      </div>
-                   </div>
-                ))}
-                {filteredCloudSamples.length === 0 && (
-                   <div style={{ padding: 32, textAlign: "center", color: "rgba(242,242,240,0.35)", fontSize: 12 }}>No samples match this filter.</div>
-                )}
-             </div>
-          </div>
-       </div>
+        </div>
+      ))}
+      {filteredCloudSamples.length === 0 && (
+        <div style={{ padding: 40, textAlign: "center", color: "rgba(242,242,240,0.3)", fontSize: 12 }}>
+          {cloudSamples.length === 0 ? "No samples yet. Capture data in the Capture tab." : "No samples match this filter."}
+        </div>
+      )}
+    </div>
+  </div>
+</div>
        )}
 
        {relabelModal && (
@@ -1846,6 +2248,35 @@ export default function DataCollection({ projectId, architecture }: { projectId:
                 </div>
              </div>
           </div>
+       )}
+
+       {/* Image Preview Modal */}
+       {previewImageModal && (
+         <div 
+           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)', zIndex: 1500, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}
+           onClick={() => setPreviewImageModal(null)}
+         >
+           <div style={{ position: 'relative', maxWidth: '90vw', maxHeight: '85vh' }} onClick={e => e.stopPropagation()}>
+             <img 
+               src={previewImageModal.url} 
+               alt={previewImageModal.label} 
+               style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', border: '1px solid rgba(157,39,222,0.5)', borderRadius: 8, boxShadow: '0 10px 40px rgba(0,0,0,0.5)' }} 
+             />
+             <div style={{ position: 'absolute', bottom: -40, left: 0, right: 0, textAlign: 'center', color: '#F2F2F0', fontSize: 18, fontWeight: 600 }}>
+               Class: {previewImageModal.label}
+             </div>
+           </div>
+           <p style={{ marginTop: 60, fontSize: 12, color: 'rgba(255,255,255,0.4)', maxWidth: 400, textAlign: 'center', lineHeight: 1.4 }}>
+             <strong>Note:</strong> Because BitBlock applies Smart Crop directly in your browser before uploading, the original uncropped images are not saved to the cloud. This saves you huge amounts of Firebase storage costs and upload time.
+           </p>
+           <button 
+             onClick={() => setPreviewImageModal(null)} 
+             className="btn-ghost" 
+             style={{ position: 'absolute', top: 20, right: 20, background: 'rgba(0,0,0,0.5)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }}
+           >
+             Close
+           </button>
+         </div>
        )}
 
        <canvas ref={canvasRef} style={{ display: 'none' }} />

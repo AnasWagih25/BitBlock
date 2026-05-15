@@ -314,7 +314,7 @@ float hcsr04_read_cm_val(int trig, int echo) {
 
     // MAX30102
     generator.forBlock["max30102_hr_init"] = function() {
-      compiler.addInclude(`#include <Wire.h>\n#include "MAX30105.h"`);
+      compiler.addInclude(`#include <Wire.h>\n#include <MAX30105.h>`);
       compiler.addGlobal(`MAX30105 particleSensor;`);
       compiler.addSetup(`if (!particleSensor.begin(Wire, I2C_SPEED_FAST)) { Serial.println("MAX30102 not found"); }\nparticleSensor.setup();`);
       return "";
@@ -428,7 +428,11 @@ String readRFIDCard() {
       compiler.addInclude(`#include <GravityTDS.h>`);
       compiler.addGlobal(`GravityTDS gravityTds_${pinId};`);
       compiler.addGlobal(`GravityTDS* gravityTdsDefault = nullptr;`);
-      compiler.addSetup(`gravityTds_${pinId}.setPin(${pin});\ngravityTds_${pinId}.setAref(3.3);\ngravityTds_${pinId}.setAdcRange(4096);\ngravityTds_${pinId}.begin();\ngravityTdsDefault = &gravityTds_${pinId};`);
+      // @ts-ignore
+      const bd = getBoardConfig(compiler.boardId);
+      const aref = (bd.platform === "esp32" || bd.platform === "esp8266") ? "3.3" : "5.0";
+      const adcRange = (bd.platform === "esp32") ? "4096" : (bd.platform === "esp8266") ? "1024" : "1024";
+      compiler.addSetup(`gravityTds_${pinId}.setPin(${pin});\ngravityTds_${pinId}.setAref(${aref});\ngravityTds_${pinId}.setAdcRange(${adcRange});\ngravityTds_${pinId}.begin();\ngravityTdsDefault = &gravityTds_${pinId};`);
       return "";
     };
     generator.forBlock["tds_read_ppm"] = function(block: any, generator: any) {
