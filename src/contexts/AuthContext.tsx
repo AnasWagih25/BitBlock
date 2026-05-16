@@ -108,7 +108,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!snap.exists()) {
       await setDoc(ref, {
         uid: u.uid,
-        email: u.email,
+        email: u.email || `guest_${u.uid.substring(0,8)}@guest.local`,
         displayName: u.displayName || "BitBuilder",
         photoURL: u.photoURL || null,
         createdAt: serverTimestamp(),

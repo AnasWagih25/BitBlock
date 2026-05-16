@@ -31,8 +31,8 @@ const features = [
   },
   {
     icon: <Globe size={28} color="#B94FF0" />,
-    title: "Community Marketplace",
-    desc: "Need a block for a specific sensor? Download community-built extensions instantly from our integrated marketplace.",
+    title: "Community Marketplace (Soon)",
+    desc: "Need a block for a specific sensor? Download community-built extensions instantly from our integrated marketplace. Launching in Q3.",
   },
 ];
 
@@ -147,6 +147,58 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Edge ML Section */}
+      <section style={{ padding: "100px 40px", background: "linear-gradient(180deg, #0A0A0A 0%, rgba(157,39,222,0.05) 100%)" }}>
+        <div style={{ maxWidth: 1000, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: 60 }}>
+            <div className="badge badge-purple" style={{ marginBottom: 16 }}>TinyML Built-In</div>
+            <h2 style={{ fontSize: "clamp(28px, 4vw, 40px)", fontWeight: 700, color: "#F2F2F0", marginBottom: 16 }}>
+              Train AI models for the edge. <br /><span className="gradient-text">Without Python.</span>
+            </h2>
+            <p style={{ color: "rgba(242,242,240,0.6)", fontSize: 18, maxWidth: 650, margin: "0 auto" }}>
+              Our integrated Machine Learning pipeline lets you collect data from sensors, train neural networks in the cloud, and deploy them to your microcontroller as a single visual block.
+            </p>
+          </div>
+
+          <div style={{ display: "flex", gap: 40, alignItems: "center", flexWrap: "wrap", flexDirection: "row-reverse" }}>
+             <div style={{ flex: "1 1 400px" }}>
+                <ul style={{ display: "flex", flexDirection: "column", gap: 24, padding: 0, listStyle: "none" }}>
+                  <li>
+                    <h4 style={{ color: "#F2F2F0", fontSize: 18, fontWeight: 700, marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
+                      <span style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(157,39,222,0.1)", color: "#9D27DE", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>1</span>
+                      Live Data Collection
+                    </h4>
+                    <p style={{ color: "rgba(242,242,240,0.6)", fontSize: 15, paddingLeft: 44, margin: 0, lineHeight: 1.5 }}>Stream raw accelerometer or sensor data directly from your board into our browser-based data labeling tool.</p>
+                  </li>
+                  <li>
+                    <h4 style={{ color: "#F2F2F0", fontSize: 18, fontWeight: 700, marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
+                      <span style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(157,39,222,0.1)", color: "#9D27DE", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>2</span>
+                      Cloud Training
+                    </h4>
+                    <p style={{ color: "rgba(242,242,240,0.6)", fontSize: 15, paddingLeft: 44, margin: 0, lineHeight: 1.5 }}>We handle the TensorFlow logic. Just choose your architecture, click train, and let our cloud compute nodes build your model.</p>
+                  </li>
+                  <li>
+                    <h4 style={{ color: "#F2F2F0", fontSize: 18, fontWeight: 700, marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
+                      <span style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(157,39,222,0.1)", color: "#9D27DE", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>3</span>
+                      Instant Inference
+                    </h4>
+                    <p style={{ color: "rgba(242,242,240,0.6)", fontSize: 15, paddingLeft: 44, margin: 0, lineHeight: 1.5 }}>The trained model is automatically quantized and converted into a custom visual block. Snap it into your workspace and run offline inference.</p>
+                  </li>
+                </ul>
+             </div>
+             <div style={{ flex: "1 1 400px", background: "#0A0A0A", borderRadius: 16, border: "1px solid rgba(157,39,222,0.3)", overflow: "hidden", boxShadow: "0 10px 30px rgba(0,0,0,0.5)" }}>
+               <div style={{ height: 40, background: "#111", borderBottom: "1px solid rgba(255,255,255,0.05)", display: "flex", alignItems: "center", padding: "0 16px", gap: 8 }}>
+                  <div style={{width: 10, height: 10, borderRadius: "50%", background: "#EF4444"}} />
+                  <div style={{width: 10, height: 10, borderRadius: "50%", background: "#F59E0B"}} />
+                  <div style={{width: 10, height: 10, borderRadius: "50%", background: "#22C55E"}} />
+                  <span style={{fontSize: 12, color: "#888", marginLeft: 12, fontFamily: "monospace"}}>bitblock.lol</span>
+               </div>
+               <img src="/demo/ai_lab.png" alt="ML Pipeline" style={{ width: "100%", display: "block" }} />
+             </div>
+          </div>
+        </div>
+      </section>
+
       {/* The Problem / Solution Section */}
       <section style={{ padding: "100px 40px", background: "rgba(157,39,222,0.03)" }}>
         <div style={{ maxWidth: 1000, margin: "0 auto" }}>
@@ -245,55 +297,65 @@ export default function LandingPage() {
          </div>
       </section>
 
-      {/* Edge ML Section */}
-      <section style={{ padding: "100px 40px", background: "linear-gradient(180deg, #0A0A0A 0%, rgba(157,39,222,0.05) 100%)" }}>
-        <div style={{ maxWidth: 1000, margin: "0 auto" }}>
+      {/* Testimonial Section */}
+      <section style={{ padding: "80px 40px", background: "#0A0A0A" }}>
+        <div style={{ maxWidth: 800, margin: "0 auto", textAlign: "center" }}>
+          <div style={{ fontSize: 48, color: "#9D27DE", marginBottom: -20, fontFamily: "serif" }}>"</div>
+          <p style={{ fontSize: "clamp(20px, 3vw, 28px)", fontWeight: 500, color: "#F2F2F0", lineHeight: 1.5, marginBottom: 24 }}>
+            I used to spend 3 hours just setting up my C++ environment and fighting driver errors. With BitBlock, I had a working gesture-recognition glove built and flashed in 20 minutes.
+          </p>
+          <div style={{ fontSize: 16, color: "rgba(242,242,240,0.6)", fontWeight: 600 }}>
+            &mdash; Marawan T., Engineering Student
+          </div>
+        </div>
+      </section>
+
+      {/* Edge Impulse Comparison Section */}
+      <section style={{ padding: "100px 40px", background: "linear-gradient(180deg, rgba(157,39,222,0.04) 0%, #0A0A0A 100%)" }}>
+        <div style={{ maxWidth: 1100, margin: "0 auto" }}>
           <div style={{ textAlign: "center", marginBottom: 60 }}>
-            <div className="badge badge-purple" style={{ marginBottom: 16 }}>TinyML Built-In</div>
+            <div className="badge badge-purple" style={{ marginBottom: 16 }}>Switching from Edge Impulse?</div>
             <h2 style={{ fontSize: "clamp(28px, 4vw, 40px)", fontWeight: 700, color: "#F2F2F0", marginBottom: 16 }}>
-              Train AI models for the edge. <br /><span className="gradient-text">Without Python.</span>
+              Same goal. <span className="gradient-text">Radically simpler path.</span>
             </h2>
-            <p style={{ color: "rgba(242,242,240,0.6)", fontSize: 18, maxWidth: 650, margin: "0 auto" }}>
-              Our integrated Machine Learning pipeline lets you collect data from sensors, train neural networks in the cloud, and deploy them to your microcontroller as a single visual block.
+            <p style={{ color: "rgba(242,242,240,0.6)", fontSize: 18, maxWidth: 700, margin: "0 auto" }}>
+              Edge Impulse was acquired by Qualcomm and is pivoting toward enterprise industrial IoT. If you're a maker, student, or startup — you're no longer their priority. We built BitBlock for you.
             </p>
           </div>
 
-          <div style={{ display: "flex", gap: 40, alignItems: "center", flexWrap: "wrap", flexDirection: "row-reverse" }}>
-             <div style={{ flex: "1 1 400px" }}>
-                <ul style={{ display: "flex", flexDirection: "column", gap: 24, padding: 0, listStyle: "none" }}>
-                  <li>
-                    <h4 style={{ color: "#F2F2F0", fontSize: 18, fontWeight: 700, marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
-                      <span style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(157,39,222,0.1)", color: "#9D27DE", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>1</span>
-                      Live Data Collection
-                    </h4>
-                    <p style={{ color: "rgba(242,242,240,0.6)", fontSize: 15, paddingLeft: 44, margin: 0, lineHeight: 1.5 }}>Stream raw accelerometer or sensor data directly from your board into our browser-based data labeling tool.</p>
-                  </li>
-                  <li>
-                    <h4 style={{ color: "#F2F2F0", fontSize: 18, fontWeight: 700, marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
-                      <span style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(157,39,222,0.1)", color: "#9D27DE", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>2</span>
-                      Cloud Training
-                    </h4>
-                    <p style={{ color: "rgba(242,242,240,0.6)", fontSize: 15, paddingLeft: 44, margin: 0, lineHeight: 1.5 }}>We handle the TensorFlow logic. Just choose your architecture, click train, and let our cloud compute nodes build your model.</p>
-                  </li>
-                  <li>
-                    <h4 style={{ color: "#F2F2F0", fontSize: 18, fontWeight: 700, marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
-                      <span style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(157,39,222,0.1)", color: "#9D27DE", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>3</span>
-                      Instant Inference
-                    </h4>
-                    <p style={{ color: "rgba(242,242,240,0.6)", fontSize: 15, paddingLeft: 44, margin: 0, lineHeight: 1.5 }}>The trained model is automatically quantized and converted into a custom visual block. Snap it into your workspace and run offline inference.</p>
-                  </li>
-                </ul>
-             </div>
-             <div style={{ flex: "1 1 400px", background: "#0A0A0A", borderRadius: 16, border: "1px solid rgba(157,39,222,0.3)", overflow: "hidden", boxShadow: "0 10px 30px rgba(0,0,0,0.5)" }}>
-               <div style={{ height: 40, background: "#111", borderBottom: "1px solid rgba(255,255,255,0.05)", display: "flex", alignItems: "center", padding: "0 16px", gap: 8 }}>
-                  <div style={{width: 10, height: 10, borderRadius: "50%", background: "#EF4444"}} />
-                  <div style={{width: 10, height: 10, borderRadius: "50%", background: "#F59E0B"}} />
-                  <div style={{width: 10, height: 10, borderRadius: "50%", background: "#22C55E"}} />
-                  <span style={{fontSize: 12, color: "#888", marginLeft: 12, fontFamily: "monospace"}}>bitblock.lol</span>
-               </div>
-               <img src="/demo/ai_lab.png" alt="ML Pipeline" style={{ width: "100%", display: "block" }} />
-             </div>
+          {/* Comparison Table */}
+          <div style={{ borderRadius: 16, border: "1px solid rgba(157,39,222,0.2)", overflow: "hidden", background: "#0A0A0A" }}>
+            {/* Header */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", background: "#111", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+              <div style={{ padding: "16px 20px", fontSize: 13, color: "rgba(242,242,240,0.4)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}></div>
+              <div style={{ padding: "16px 20px", fontSize: 13, color: "rgba(242,242,240,0.5)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", textAlign: "center" }}>Edge Impulse</div>
+              <div style={{ padding: "16px 20px", fontSize: 13, color: "#9D27DE", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", textAlign: "center" }}>BitBlock</div>
+            </div>
+
+            {[
+              { label: "Setup Required", ei: "Install Node.js CLI tools, serial daemon, data forwarder packages", bb: "Open Chrome. That's it.", bbWin: true },
+              { label: "Data Collection", ei: "Run edge-impulse-data-forwarder from terminal, configure serial manually", bb: "Click \"Collect\" — WebSerial streams sensor data directly in the browser", bbWin: true },
+              { label: "Model Deployment", ei: "Download a ZIP file, extract C++ library, manually integrate into Arduino/PlatformIO project", bb: "Model auto-compiles into firmware and flashes via WebSerial in one click", bbWin: true },
+              { label: "Inference Code", ei: "Write C++ tensor allocation, input normalization, and output parsing yourself", bb: "Drag a visual block into your workspace. Zero code.", bbWin: true },
+              { label: "Free Tier Limits", ei: "3 private projects, 10 experiments, no GPU, no RAM-optimized compiler", bb: "Unlimited projects during beta. No paywalls on any ML feature.", bbWin: true },
+              { label: "Architectures", ei: "Generic pipelines — you configure DSP blocks, learning blocks, impulse design manually", bb: "12 pre-tuned architectures across 8 task types with auto-optimization for your specific board", bbWin: true },
+              { label: "Training Feedback", ei: "Train, wait, see final accuracy. Limited experiment tracking on free tier.", bb: "Live epoch-by-epoch loss/accuracy, per-class F1, confusion matrix, hard-example identification", bbWin: true },
+              { label: "Production License", ei: "Enterprise subscription required for >1000 units. Contact sales for pricing.", bb: "Open source firmware output. Deploy wherever you want.", bbWin: true },
+            ].map((row, i) => (
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", borderBottom: i < 7 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
+                <div style={{ padding: "16px 20px", fontSize: 13, color: "#F2F2F0", fontWeight: 600, display: "flex", alignItems: "center" }}>{row.label}</div>
+                <div style={{ padding: "16px 20px", fontSize: 13, color: "rgba(242,242,240,0.4)", lineHeight: 1.5, display: "flex", alignItems: "center", borderLeft: "1px solid rgba(255,255,255,0.05)", borderRight: "1px solid rgba(255,255,255,0.05)" }}>{row.ei}</div>
+                <div style={{ padding: "16px 20px", fontSize: 13, color: row.bbWin ? "#F2F2F0" : "rgba(242,242,240,0.4)", lineHeight: 1.5, display: "flex", alignItems: "center", gap: 8, background: row.bbWin ? "rgba(157,39,222,0.05)" : "transparent" }}>
+                  {row.bbWin && <CheckCircle2 size={14} color="#9D27DE" style={{flexShrink: 0}} />}
+                  {row.bb}
+                </div>
+              </div>
+            ))}
           </div>
+
+          <p style={{ textAlign: "center", marginTop: 32, fontSize: 14, color: "rgba(242,242,240,0.4)", fontStyle: "italic" }}>
+            Comparison based on Edge Impulse Developer (free) plan as of May 2026. Enterprise features require contacting their sales team.
+          </p>
         </div>
       </section>
 
@@ -339,11 +401,13 @@ export default function LandingPage() {
               Ready to start building?
             </h2>
             <p style={{ color: "rgba(242,242,240,0.7)", fontSize: 18, marginBottom: 40, maxWidth: 500, margin: "0 auto 40px" }}>
-              Join thousands of makers, educators, and engineers creating embedded projects with BitBlock. It takes 30 seconds to sign up.
+              Join 200+ makers and students already building with BitBlock. It takes 30 seconds to sign up.
             </p>
-            <Link to="/signup" className="btn-primary" style={{ fontSize: 18, padding: "16px 40px" }}>
-              {isBetaMode ? "Create Free Account" : "Start Building for Free"} <ChevronRight size={20} />
-            </Link>
+            <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
+              <Link to="/signup" className="btn-primary" style={{ fontSize: 18, padding: "16px 40px" }}>
+                {isBetaMode ? "Create Free Account" : "Start Building for Free"} <ChevronRight size={20} />
+              </Link>
+            </div>
           </div>
         </div>
       </section>
