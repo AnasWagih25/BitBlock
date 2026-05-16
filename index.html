@@ -11,7 +11,45 @@
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Static content for bots and non-JS crawlers. React will overwrite this upon hydration. -->
+      <main style="position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;">
+        <h1>BitBlock: Program Hardware. Without Writing Code.</h1>
+        <p>Stop fighting with C++ pointers, missing libraries, and broken toolchains. BitBlock is a visual programming platform that lets anyone build complex device firmware in minutes directly from the browser.</p>
+        
+        <h2>Hardware is hard. We made it easy.</h2>
+        <p>Traditional embedded development takes hours of setup before you can blink an LED. We've removed all the friction.</p>
+        <ul>
+          <li><strong>The Old Way:</strong> Download gigabytes of IDEs, hunt down USB drivers, struggle with C++ syntax errors, spend hours finding the right libraries.</li>
+          <li><strong>The BitBlock Way:</strong> Open your browser, snap visual blocks together, click "Compile & Flash", and your hardware is running instantly.</li>
+        </ul>
+
+        <h2>Build hardware in 3 simple steps</h2>
+        <ol>
+          <li><strong>Design visually with blocks:</strong> Choose from over 150+ pre-built logic and hardware blocks. Read sensors, control motors, and build complex state machines without writing a single line of syntax.</li>
+          <li><strong>Cloud compile instantly:</strong> Our cloud infrastructure takes your visual blocks, generates optimized C++ code, and compiles it for your specific board architecture in seconds. No local toolchains required.</li>
+          <li><strong>Flash directly from Chrome:</strong> Plug your ESP32 or Arduino into your computer's USB port. BitBlock uses the secure WebSerial API to flash the firmware directly from the browser window. It just works.</li>
+        </ol>
+
+        <h2>Train AI models for the edge. Without Python.</h2>
+        <p>Our integrated Machine Learning pipeline lets you collect data from sensors, train neural networks in the cloud, and deploy them to your microcontroller as a single visual block.</p>
+        <ol>
+          <li><strong>Live Data Collection:</strong> Stream raw accelerometer or sensor data directly from your board into our browser-based data labeling tool.</li>
+          <li><strong>Cloud Training:</strong> We handle the TensorFlow logic. Just choose your architecture, click train, and let our cloud compute nodes build your model.</li>
+          <li><strong>Instant Inference:</strong> The trained model is automatically quantized and converted into a custom visual block. Snap it into your workspace and run offline inference.</li>
+        </ol>
+
+        <h2>Features</h2>
+        <ul>
+          <li><strong>Visual Block Editor:</strong> Drag, drop, and snap blocks together to build complex logic.</li>
+          <li><strong>Zero Setup Required:</strong> No drivers to install, no libraries to configure, no IDEs to download.</li>
+          <li><strong>Cloud Compilation:</strong> Instant cloud compilation to highly optimized C++.</li>
+          <li><strong>1-Click Flashing:</strong> Flash directly from the browser using WebSerial API.</li>
+          <li><strong>Edge AI Built-in:</strong> Collect data, train TinyML models, and deploy them.</li>
+          <li><strong>Community Marketplace:</strong> Download community-built block extensions instantly.</li>
+        </ul>
+      </main>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
