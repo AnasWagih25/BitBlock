@@ -873,12 +873,8 @@ export default function IDEPage() {
 
       setCompileProgress((p) => Math.max(p, 28));
       setCompileMessage("Job queued · ID: " + jobRef.id.slice(0, 8) + " · compiling now (1-2 min).");
-      const endpoint = (import.meta.env.VITE_COMPILER_URL as string) || "/.netlify/functions/compile-firmware";
-      // For local dev, call Cloud Run directly since Netlify functions aren't available
-      const compileUrl = endpoint === "/.netlify/functions/compile-firmware" && window.location.hostname === "localhost"
-        ? "https://bitblock-compiler-409440684176.us-central1.run.app/compile"
-        : endpoint;
-      const includeAuthHeader = !compileUrl.startsWith("http");
+      const compileUrl = "https://bitblock-compiler-409440684176.us-central1.run.app/compile";
+      const includeAuthHeader = false;
       const response = await fetch(compileUrl, {
         method: "POST",
         headers: {

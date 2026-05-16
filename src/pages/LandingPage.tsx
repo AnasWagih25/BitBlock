@@ -1,81 +1,48 @@
-import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import CassetteMascot from "../components/ui/CassetteMascot";
-import { Zap, Puzzle, CloudLightning, Usb, Cpu, Globe } from "lucide-react";
-import DemoModal from "../components/ui/DemoModal";
+import { Zap, Puzzle, CloudLightning, Usb, Cpu, Globe, CheckCircle2, ChevronRight } from "lucide-react";
 import MobileMenuButton from "../components/ui/MobileMenuButton";
 
 const features = [
   {
-    icon: <Zap size={32} color="#B94FF0" />,
-    title: "Zero Installation",
-    desc: "Everything runs in your browser. No software, no drivers, no IDE setup — ever.",
-  },
-  {
-    icon: <Puzzle size={32} color="#B94FF0" />,
+    icon: <Puzzle size={28} color="#B94FF0" />,
     title: "Visual Block Editor",
-    desc: "Drag and connect blocks to build real firmware. No code required.",
+    desc: "Drag, drop, and snap blocks together to build complex logic. If you can build a puzzle, you can program hardware.",
   },
   {
-    icon: <CloudLightning size={32} color="#B94FF0" />,
+    icon: <Zap size={28} color="#B94FF0" />,
+    title: "Zero Setup Required",
+    desc: "No drivers to install, no libraries to configure, no IDEs to download. Everything runs directly in your browser.",
+  },
+  {
+    icon: <CloudLightning size={28} color="#B94FF0" />,
     title: "Cloud Compilation",
-    desc: "We compile your firmware in the cloud on powerful build servers — instantly.",
+    desc: "We compile your firmware instantly on powerful cloud servers, translating your blocks into highly optimized C++ code.",
   },
   {
-    icon: <Usb size={32} color="#B94FF0" />,
-    title: "Direct USB Flashing",
-    desc: "Flash your microcontroller directly from the browser via WebSerial API.",
+    icon: <Usb size={28} color="#B94FF0" />,
+    title: "1-Click Flashing",
+    desc: "Connect your board via USB and flash it directly from the browser using WebSerial API. No external tools needed.",
   },
   {
-    icon: <Cpu size={32} color="#B94FF0" />,
-    title: "Edge AI / ML Blocks",
-    desc: "Run machine learning models on your microcontroller with drag-and-drop blocks.",
+    icon: <Cpu size={28} color="#B94FF0" />,
+    title: "Edge AI Built-in",
+    desc: "Collect data, train machine learning models, and deploy them to your microcontroller without writing any Python.",
   },
   {
-    icon: <Globe size={32} color="#B94FF0" />,
+    icon: <Globe size={28} color="#B94FF0" />,
     title: "Community Marketplace",
-    desc: "Discover, share, and install custom block extensions from the community.",
+    desc: "Need a block for a specific sensor? Download community-built extensions instantly from our integrated marketplace.",
   },
-];
-
-const boards = [
-  { name: "ESP32", color: "#E53E3E", sub: "WROOM / S3 / C3 / CAM" },
-  { name: "ESP8266", color: "#3182CE", sub: "NodeMCU" },
-  { name: "Arduino", color: "#38A169", sub: "UNO / NANO / MEGA" },
-];
-
-const stats = [
-  { value: "6+", label: "Supported Boards" },
-  { value: "100+", label: "Block Categories" },
-  { value: "0", label: "Dependencies" },
-  { value: "∞", label: "Possibilities" },
 ];
 
 export default function LandingPage() {
   const { isBetaMode } = useAuth();
-  const [showDemo, setShowDemo] = useState(false);
-  const heroRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const el = heroRef.current;
-    if (!el) return;
-    const handle = (e: MouseEvent) => {
-      const rect = el.getBoundingClientRect();
-      const x = ((e.clientX - rect.left) / rect.width - 0.5) * 4;
-      const y = ((e.clientY - rect.top) / rect.height - 0.5) * 2.5;
-      el.style.transform = `perspective(1200px) rotateX(${-y}deg) rotateY(${x}deg)`;
-    };
-    const reset = () => { el.style.transform = "perspective(1200px) rotateX(0deg) rotateY(0deg)"; };
-    window.addEventListener("mousemove", handle);
-    window.addEventListener("mouseleave", reset);
-    return () => { window.removeEventListener("mousemove", handle); window.removeEventListener("mouseleave", reset); };
-  }, []);
-
+  
   return (
     <div data-page="landing" style={{ background: "#0A0A0A", minHeight: "100vh", fontFamily: "Space Grotesk, sans-serif" }}>
 
-      {/* ── Nav ─────────────────────────────────────────── */}
+      {/* Nav */}
       <nav className="glass-dark" style={{
         position: "fixed", top: 0, left: 0, right: 0, zIndex: 100,
         padding: "0 40px", height: 64,
@@ -98,166 +65,181 @@ export default function LandingPage() {
         </div>
       </nav>
 
-      {/* ── Hero ────────────────────────────────────────── */}
+      {/* Hero */}
       <section className="grid-bg hero-section" style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "120px 40px 80px",
+        padding: "160px 40px 80px",
         position: "relative",
         overflow: "hidden",
+        textAlign: "center"
       }}>
-        {/* Background orbs */}
         <div style={{
-          position: "absolute", top: "20%", left: "10%",
-          width: 400, height: 400,
+          position: "absolute", top: "10%", left: "50%", transform: "translateX(-50%)",
+          width: 600, height: 600,
           borderRadius: "50%",
           background: "radial-gradient(circle, rgba(157,39,222,0.15) 0%, transparent 70%)",
-          filter: "blur(40px)",
-          pointerEvents: "none",
-        }} />
-        <div style={{
-          position: "absolute", bottom: "20%", right: "5%",
-          width: 300, height: 300,
-          borderRadius: "50%",
-          background: "radial-gradient(circle, rgba(185,79,240,0.1) 0%, transparent 70%)",
           filter: "blur(60px)",
           pointerEvents: "none",
         }} />
 
-        <div className="hero-grid" style={{
-          maxWidth: 1100, width: "100%",
-          display: "grid", gridTemplateColumns: "1fr 1fr",
-          gap: 80, alignItems: "center",
-        }}>
-          {/* Left: Text */}
-          <div className="animate-slide-up hero-text">
-            <div className="badge badge-purple" style={{ marginBottom: 24 }}>
-              🎛 Visual Firmware Builder
-            </div>
-            <h1 style={{
-              fontFamily: "Superstar, fantasy",
-              fontSize: "clamp(36px, 5vw, 64px)",
-              lineHeight: 1.1,
-              letterSpacing: "0.05em",
-              marginBottom: 24,
-              color: "#F2F2F0",
-            }}>
-              BUILD FIRMWARE
-              <br />
-              <span className="gradient-text">WITHOUT CODE</span>
-            </h1>
-            <p style={{
-              fontSize: 18, lineHeight: 1.7,
-              color: "rgba(242,242,240,0.65)",
-              marginBottom: 40, maxWidth: 480,
-            }}>
-              Drag blocks, connect logic, compile in the cloud — then flash your microcontroller
-              directly from the browser. Zero installation. Zero IDE. Pure creation.
-            </p>
-            <div className="hero-cta" style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-              <Link to="/signup" className="btn-primary" style={{ fontSize: 15, padding: "14px 32px" }}>
-                {isBetaMode ? "Join the Beta →" : "Start Building Free →"}
-              </Link>
-              <button 
-                onClick={() => setShowDemo(true)}
-                className="btn-secondary" style={{ fontSize: 15, padding: "14px 32px", cursor: "pointer" }}
-              >
-                View Demo
-              </button>
-            </div>
-            <p style={{ marginTop: 20, fontSize: 13, color: "rgba(242,242,240,0.35)" }}>
-              ⚡ Chrome / Edge only (WebSerial API) · No account needed to explore
-            </p>
-
-            {/* Board badges */}
-            <div className="hero-boards" style={{ display: "flex", gap: 10, marginTop: 32, flexWrap: "wrap" }}>
-              {boards.map((b) => (
-                <div key={b.name} style={{
-                  background: "rgba(26,6,40,0.8)",
-                  border: `1px solid ${b.color}40`,
-                  borderRadius: 8, padding: "6px 12px",
-                  display: "flex", flexDirection: "column",
-                }}>
-                  <span style={{ color: b.color, fontSize: 12, fontWeight: 700 }}>{b.name}</span>
-                  <span style={{ color: "rgba(242,242,240,0.4)", fontSize: 10 }}>{b.sub}</span>
-                </div>
-              ))}
-            </div>
+        <div style={{ position: "relative", zIndex: 1, maxWidth: 900, margin: "0 auto" }}>
+          <div className="badge badge-purple animate-slide-up" style={{ marginBottom: 24, padding: "8px 16px", fontSize: 13 }}>
+            🚀 The easiest way to program microcontrollers
           </div>
-
-          {/* Right: Mascot + minicard */}
-          <div ref={heroRef} className="hero-mascot-area" style={{
-            display: "flex", flexDirection: "column", alignItems: "center",
-            transition: "transform 0.5s cubic-bezier(0.23, 1, 0.32, 1)",
+          <h1 className="animate-slide-up" style={{
+            fontFamily: "Space Grotesk, sans-serif",
+            fontWeight: 800,
+            fontSize: "clamp(40px, 6vw, 72px)",
+            lineHeight: 1.1,
+            letterSpacing: "-0.02em",
+            marginBottom: 24,
+            color: "#F2F2F0",
+            animationDelay: "0.1s"
           }}>
-            <CassetteMascot size={280} mood="excited" animate />
+            Program Hardware.<br />
+            <span className="gradient-text">Without Writing Code.</span>
+          </h1>
+          <p className="animate-slide-up" style={{
+            fontSize: "clamp(16px, 2vw, 20px)", 
+            lineHeight: 1.6,
+            color: "rgba(242,242,240,0.65)",
+            marginBottom: 40, maxWidth: 650, margin: "0 auto 40px",
+            animationDelay: "0.2s"
+          }}>
+            Stop fighting with C++ pointers, missing libraries, and broken toolchains. BitBlock is a visual programming platform that lets anyone build complex device firmware in minutes directly from the browser.
+          </p>
+          <div className="hero-cta animate-slide-up" style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap", animationDelay: "0.3s" }}>
+            <Link to="/signup" className="btn-primary" style={{ fontSize: 16, padding: "16px 36px" }}>
+              {isBetaMode ? "Start Building for Free" : "Start Building Free"}
+            </Link>
+          </div>
+          <p className="animate-slide-up" style={{ marginTop: 16, fontSize: 13, color: "rgba(242,242,240,0.4)", animationDelay: "0.4s" }}>
+            Works with ESP32, Arduino, and ESP8266. No credit card required.
+          </p>
+        </div>
 
-            {/* Mock IDE mini-preview */}
-            <div className="glass" style={{
-              marginTop: -20, borderRadius: 16, padding: "16px 20px",
-              maxWidth: 320, width: "100%",
-            }}>
-              <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#EF4444" }} />
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#F59E0B" }} />
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#22C55E" }} />
-                <span style={{ marginLeft: 8, fontSize: 11, color: "rgba(242,242,240,0.4)" }}>BitBlock IDE</span>
-              </div>
-              {["🟣 On Start", "  🔵 Set LED Pin 2", "  🟠 Wait 1000ms", "  🔵 Toggle LED"].map((line, i) => (
-                <div key={i} style={{
-                  fontFamily: "JetBrains Mono, monospace",
-                  fontSize: 11, color: "rgba(224,216,240,0.8)",
-                  padding: "3px 0",
-                  paddingLeft: line.startsWith("  ") ? 16 : 0,
-                  borderLeft: line.startsWith("  ") ? "2px solid rgba(157,39,222,0.4)" : "none",
-                  marginLeft: line.startsWith("  ") ? 8 : 0,
-                }}>
-                  {line.trim()}
-                </div>
-              ))}
-              <div style={{ marginTop: 12, padding: "8px 12px", background: "rgba(34,197,94,0.1)", borderRadius: 8, border: "1px solid rgba(34,197,94,0.3)" }}>
-                <span style={{ fontSize: 11, color: "#4ade80" }}>✓ Compiled successfully · 12.4KB</span>
-              </div>
+        {/* Hero Image / App Preview */}
+        <div className="animate-slide-up" style={{
+          marginTop: 80,
+          position: "relative",
+          zIndex: 10,
+          maxWidth: 1000,
+          margin: "80px auto 0",
+          animationDelay: "0.5s",
+          perspective: 1000
+        }}>
+          <div style={{
+            background: "#0A0A0A",
+            border: "1px solid rgba(157,39,222,0.3)",
+            borderRadius: 16,
+            overflow: "hidden",
+            boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 40px rgba(157,39,222,0.2)",
+            transform: "rotateX(2deg)",
+          }}>
+             {/* Simple mock header of IDE */}
+            <div style={{ height: 40, background: "#111", borderBottom: "1px solid rgba(255,255,255,0.05)", display: "flex", alignItems: "center", padding: "0 16px", gap: 8 }}>
+               <div style={{width: 10, height: 10, borderRadius: "50%", background: "#EF4444"}} />
+               <div style={{width: 10, height: 10, borderRadius: "50%", background: "#F59E0B"}} />
+               <div style={{width: 10, height: 10, borderRadius: "50%", background: "#22C55E"}} />
+               <span style={{fontSize: 12, color: "#888", marginLeft: 12, fontFamily: "monospace"}}>Smart_Home_Controller.bit</span>
+            </div>
+            <img src="/demo/ide_overview.png" alt="BitBlock Visual Editor" style={{ width: "100%", display: "block" }} />
+          </div>
+        </div>
+      </section>
+
+      {/* The Problem / Solution Section */}
+      <section style={{ padding: "100px 40px", background: "rgba(157,39,222,0.03)" }}>
+        <div style={{ maxWidth: 1000, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: 60 }}>
+            <h2 style={{ fontSize: "clamp(28px, 4vw, 40px)", fontWeight: 700, color: "#F2F2F0", marginBottom: 16 }}>
+              Hardware is hard. <span className="gradient-text">We made it easy.</span>
+            </h2>
+            <p style={{ color: "rgba(242,242,240,0.6)", fontSize: 18, maxWidth: 600, margin: "0 auto" }}>
+              Traditional embedded development takes hours of setup before you can blink an LED. We've removed all the friction.
+            </p>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 32 }}>
+            <div className="card" style={{ background: "rgba(239, 68, 68, 0.05)", borderColor: "rgba(239, 68, 68, 0.2)" }}>
+              <div style={{ color: "#EF4444", fontWeight: 700, fontSize: 14, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 16 }}>The Old Way</div>
+              <ul style={{ display: "flex", flexDirection: "column", gap: 12, color: "rgba(242,242,240,0.6)", padding: 0, listStyle: "none" }}>
+                <li style={{ display: "flex", gap: 8 }}><span style={{ color: "#EF4444" }}>✕</span> Download gigabytes of IDEs</li>
+                <li style={{ display: "flex", gap: 8 }}><span style={{ color: "#EF4444" }}>✕</span> Hunt down USB drivers</li>
+                <li style={{ display: "flex", gap: 8 }}><span style={{ color: "#EF4444" }}>✕</span> Struggle with C++ syntax errors</li>
+                <li style={{ display: "flex", gap: 8 }}><span style={{ color: "#EF4444" }}>✕</span> Spend hours finding the right libraries</li>
+              </ul>
+            </div>
+            <div className="card" style={{ background: "rgba(157, 39, 222, 0.05)", borderColor: "rgba(157, 39, 222, 0.4)", boxShadow: "0 0 20px rgba(157,39,222,0.1)" }}>
+               <div style={{ color: "#9D27DE", fontWeight: 700, fontSize: 14, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 16 }}>The BitBlock Way</div>
+              <ul style={{ display: "flex", flexDirection: "column", gap: 12, color: "#F2F2F0", padding: 0, listStyle: "none" }}>
+                <li style={{ display: "flex", gap: 8 }}><CheckCircle2 size={20} color="#9D27DE" /> Open browser</li>
+                <li style={{ display: "flex", gap: 8 }}><CheckCircle2 size={20} color="#9D27DE" /> Snap visual blocks together</li>
+                <li style={{ display: "flex", gap: 8 }}><CheckCircle2 size={20} color="#9D27DE" /> Click "Compile & Flash"</li>
+                <li style={{ display: "flex", gap: 8 }}><CheckCircle2 size={20} color="#9D27DE" /> Hardware running instantly</li>
+              </ul>
             </div>
           </div>
         </div>
       </section>
 
-      {/* ── Stats ────────────────────────────────────────── */}
-      <section className="stats-section" style={{ padding: "60px 40px", borderTop: "1px solid rgba(157,39,222,0.1)" }}>
-        <div className="stats-grid" style={{ maxWidth: 900, margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 24 }}>
-          {stats.map((s) => (
-            <div key={s.label} style={{ textAlign: "center" }}>
-              <div style={{ fontFamily: "Superstar, fantasy", fontSize: 42, color: "#9D27DE", letterSpacing: "0.05em" }}>{s.value}</div>
-              <div style={{ fontSize: 13, color: "rgba(242,242,240,0.5)", marginTop: 4 }}>{s.label}</div>
+      {/* How it works visuals */}
+      <section style={{ padding: "100px 40px" }}>
+         <div style={{ maxWidth: 1000, margin: "0 auto" }}>
+            <h2 style={{ textAlign: "center", fontSize: "clamp(28px, 4vw, 36px)", fontWeight: 700, marginBottom: 60 }}>Build hardware in 3 simple steps</h2>
+            
+            <div style={{ display: "flex", flexDirection: "column", gap: 80 }}>
+               {/* Step 1 */}
+               <div style={{ display: "flex", gap: 40, alignItems: "center", flexWrap: "wrap" }}>
+                  <div style={{ flex: "1 1 400px" }}>
+                     <div style={{ color: "#9D27DE", fontWeight: 800, fontSize: 64, lineHeight: 1, opacity: 0.5, marginBottom: 16 }}>1</div>
+                     <h3 style={{ fontSize: 24, fontWeight: 700, marginBottom: 16 }}>Design visually with blocks</h3>
+                     <p style={{ color: "rgba(242,242,240,0.6)", fontSize: 16, lineHeight: 1.6 }}>Choose from over 150+ pre-built logic and hardware blocks. Read sensors, control motors, and build complex state machines without writing a single line of syntax.</p>
+                  </div>
+                  <div style={{ flex: "1 1 400px", background: "#111", borderRadius: 16, border: "1px solid #333", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                     <img src="/demo/ide_overview.png" alt="Blocks" style={{ width: "100%", display: "block" }} />
+                  </div>
+               </div>
+
+               {/* Step 2 */}
+               <div style={{ display: "flex", gap: 40, alignItems: "center", flexWrap: "wrap", flexDirection: "row-reverse" }}>
+                  <div style={{ flex: "1 1 400px" }}>
+                     <div style={{ color: "#9D27DE", fontWeight: 800, fontSize: 64, lineHeight: 1, opacity: 0.5, marginBottom: 16 }}>2</div>
+                     <h3 style={{ fontSize: 24, fontWeight: 700, marginBottom: 16 }}>Cloud compile instantly</h3>
+                     <p style={{ color: "rgba(242,242,240,0.6)", fontSize: 16, lineHeight: 1.6 }}>Our cloud infrastructure takes your visual blocks, generates optimized C++ code, and compiles it for your specific board architecture in seconds. No local toolchains required.</p>
+                  </div>
+                  <div style={{ flex: "1 1 400px", background: "#0A0A0A", borderRadius: 16, border: "1px solid #222", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", padding: "60px 0" }}>
+                     <CloudLightning size={120} color="#9D27DE" className="animate-pulse-glow" style={{ borderRadius: "50%" }} />
+                  </div>
+               </div>
+
+               {/* Step 3 */}
+               <div style={{ display: "flex", gap: 40, alignItems: "center", flexWrap: "wrap" }}>
+                  <div style={{ flex: "1 1 400px" }}>
+                     <div style={{ color: "#9D27DE", fontWeight: 800, fontSize: 64, lineHeight: 1, opacity: 0.5, marginBottom: 16 }}>3</div>
+                     <h3 style={{ fontSize: 24, fontWeight: 700, marginBottom: 16 }}>Flash directly from Chrome</h3>
+                     <p style={{ color: "rgba(242,242,240,0.6)", fontSize: 16, lineHeight: 1.6 }}>Plug your ESP32 or Arduino into your computer's USB port. BitBlock uses the secure WebSerial API to flash the firmware directly from the browser window. It just works.</p>
+                  </div>
+                  <div style={{ flex: "1 1 400px", background: "#111", borderRadius: 16, border: "1px solid #333", overflow: "hidden" }}>
+                     <img src="/demo/flash_wizard.png" alt="Flash Wizard" style={{ width: "100%", display: "block" }} />
+                  </div>
+               </div>
             </div>
-          ))}
-        </div>
+         </div>
       </section>
 
-      {/* ── Features ─────────────────────────────────────── */}
-      <section className="features-section" style={{ padding: "80px 40px" }}>
+      {/* Features Grid */}
+      <section className="features-section" style={{ padding: "80px 40px", background: "#0D0018", borderTop: "1px solid rgba(157,39,222,0.1)", borderBottom: "1px solid rgba(157,39,222,0.1)" }}>
         <div style={{ maxWidth: 1100, margin: "0 auto" }}>
           <div style={{ textAlign: "center", marginBottom: 60 }}>
-            <h2 style={{
-              fontFamily: "Superstar, fantasy",
-              fontSize: "clamp(28px, 4vw, 48px)",
-              letterSpacing: "0.06em", color: "#F2F2F0",
-              marginBottom: 16,
-            }}>
-              EVERYTHING IN <span className="gradient-text">THE BROWSER</span>
+            <h2 style={{ fontSize: "clamp(28px, 4vw, 36px)", fontWeight: 700, color: "#F2F2F0", marginBottom: 16 }}>
+              Everything you need to build the future
             </h2>
-            <p style={{ color: "rgba(242,242,240,0.5)", fontSize: 16, maxWidth: 500, margin: "0 auto" }}>
-              No installs. No setup. Just open BitBlock and start building.
-            </p>
           </div>
-          <div className="features-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 24 }}>
+          <div className="features-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 24 }}>
             {features.map((f, i) => (
-              <div key={i} className="card" style={{ cursor: "default" }}>
-                <div style={{ fontSize: 32, marginBottom: 16 }}>{f.icon}</div>
-                <h3 style={{ fontSize: 16, fontWeight: 700, color: "#F2F2F0", marginBottom: 8 }}>{f.title}</h3>
+              <div key={i} className="card" style={{ cursor: "default", background: "rgba(10,10,10,0.5)" }}>
+                <div style={{ marginBottom: 20, width: 56, height: 56, borderRadius: 16, background: "rgba(157,39,222,0.1)", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid rgba(157,39,222,0.2)" }}>{f.icon}</div>
+                <h3 style={{ fontSize: 18, fontWeight: 700, color: "#F2F2F0", marginBottom: 12 }}>{f.title}</h3>
                 <p style={{ fontSize: 14, color: "rgba(242,242,240,0.55)", lineHeight: 1.6 }}>{f.desc}</p>
               </div>
             ))}
@@ -265,78 +247,72 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── CTA Banner ───────────────────────────────────── */}
-      <section className="cta-section" style={{ padding: "80px 40px" }}>
+      {/* CTA Banner */}
+      <section className="cta-section" style={{ padding: "100px 40px" }}>
         <div className="cta-card" style={{
-          maxWidth: 800, margin: "0 auto",
-          background: "linear-gradient(135deg, rgba(157,39,222,0.15), rgba(42,10,61,0.8))",
-          border: "1px solid rgba(157,39,222,0.3)",
-          borderRadius: 24, padding: "60px 40px",
+          maxWidth: 900, margin: "0 auto",
+          background: "linear-gradient(135deg, rgba(157,39,222,0.2), rgba(42,10,61,0.9))",
+          border: "1px solid rgba(157,39,222,0.4)",
+          borderRadius: 24, padding: "80px 40px",
           textAlign: "center",
           position: "relative", overflow: "hidden",
+          boxShadow: "0 20px 40px rgba(0,0,0,0.4)"
         }}>
           <div style={{
             position: "absolute", inset: 0,
-            backgroundImage: "radial-gradient(rgba(157,39,222,0.1) 1px, transparent 1px)",
-            backgroundSize: "20px 20px",
+            backgroundImage: "radial-gradient(rgba(157,39,222,0.2) 1px, transparent 1px)",
+            backgroundSize: "24px 24px",
             pointerEvents: "none",
           }} />
           <div style={{ position: "relative", zIndex: 1 }}>
-            <CassetteMascot size={100} mood="happy" animate />
-            <h2 style={{
-              fontFamily: "Superstar, fantasy",
-              fontSize: "clamp(24px, 3.5vw, 40px)",
-              letterSpacing: "0.06em", color: "#F2F2F0",
-              marginTop: 24, marginBottom: 16,
-            }}>
-              READY TO BUILD?
+            <h2 style={{ fontSize: "clamp(32px, 4vw, 48px)", fontWeight: 800, color: "#F2F2F0", marginBottom: 20 }}>
+              Ready to start building?
             </h2>
-            <p style={{ color: "rgba(242,242,240,0.6)", fontSize: 16, marginBottom: 32 }}>
-              Join thousands of makers, students, and engineers building with BitBlock.
+            <p style={{ color: "rgba(242,242,240,0.7)", fontSize: 18, marginBottom: 40, maxWidth: 500, margin: "0 auto 40px" }}>
+              Join thousands of makers, educators, and engineers creating embedded projects with BitBlock. It takes 30 seconds to sign up.
             </p>
-            <Link to="/signup" className="btn-primary" style={{ fontSize: 16, padding: "16px 40px" }}>
-              {isBetaMode ? "Join the Beta →" : "Create Free Account →"}
+            <Link to="/signup" className="btn-primary" style={{ fontSize: 18, padding: "16px 40px" }}>
+              {isBetaMode ? "Create Free Account" : "Start Building for Free"} <ChevronRight size={20} />
             </Link>
           </div>
         </div>
       </section>
 
-      {/* ── Footer ───────────────────────────────────────── */}
+      {/* Footer */}
       <footer style={{
-        padding: "32px 40px",
+        padding: "40px",
         borderTop: "1px solid rgba(157,39,222,0.1)",
         display: "flex", justifyContent: "space-between", alignItems: "center",
-        flexWrap: "wrap", gap: 16,
+        flexWrap: "wrap", gap: 24,
       }}>
-        <span style={{ fontFamily: "Superstar, fantasy", fontSize: 16, color: "#9D27DE" }}>BITBLOCK</span>
-        <div className="footer-links" style={{ display: "flex", gap: 24 }}>
+        <div>
+           <span style={{ fontFamily: "Superstar, fantasy", fontSize: 20, color: "#9D27DE" }}>BITBLOCK</span>
+           <div style={{ fontSize: 13, color: "rgba(242,242,240,0.4)", marginTop: 8 }}>The visual programming language for hardware.</div>
+        </div>
+        <div className="footer-links" style={{ display: "flex", gap: 32 }}>
           {[
-            { label: "Docs", href: "#" },
+            { label: "Pricing", to: "/pricing" },
             { label: "Marketplace", to: "/marketplace" },
             { label: "Privacy Policy", to: "/privacy" },
             { label: "Terms", to: "/terms" },
-            { label: "GitHub", href: "https://github.com/AnasWagih25/BitBlock" },
-            { label: "Discord", href: "#" }
+            { label: "GitHub", href: "https://github.com/AnasWagih25/BitBlock" }
           ].map((l) => (
             l.to ? (
-              <Link key={l.label} to={l.to} style={{ color: "rgba(242,242,240,0.4)", fontSize: 13, textDecoration: "none" }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = "#9D27DE")}
-                onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(242,242,240,0.4)")}>
+              <Link key={l.label} to={l.to} style={{ color: "rgba(242,242,240,0.6)", fontSize: 14, textDecoration: "none", fontWeight: 500 }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = "#F2F2F0")}
+                onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(242,242,240,0.6)")}>
                 {l.label}
               </Link>
             ) : (
-              <a key={l.label} href={l.href} style={{ color: "rgba(242,242,240,0.4)", fontSize: 13, textDecoration: "none" }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = "#9D27DE")}
-                onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(242,242,240,0.4)")}>
+              <a key={l.label} href={l.href} style={{ color: "rgba(242,242,240,0.6)", fontSize: 14, textDecoration: "none", fontWeight: 500 }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = "#F2F2F0")}
+                onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(242,242,240,0.6)")}>
                 {l.label}
               </a>
             )
           ))}
         </div>
-        <span style={{ fontSize: 12, color: "rgba(242,242,240,0.25)" }}>© 2026 8BitLab. Property and development of 8bitlab.org.</span>
       </footer>
-
-      <DemoModal isOpen={showDemo} onClose={() => setShowDemo(false)} />
     </div>
   );
 }
