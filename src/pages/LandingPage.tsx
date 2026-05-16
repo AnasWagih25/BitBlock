@@ -140,7 +140,7 @@ export default function LandingPage() {
                <div style={{width: 10, height: 10, borderRadius: "50%", background: "#EF4444"}} />
                <div style={{width: 10, height: 10, borderRadius: "50%", background: "#F59E0B"}} />
                <div style={{width: 10, height: 10, borderRadius: "50%", background: "#22C55E"}} />
-               <span style={{fontSize: 12, color: "#888", marginLeft: 12, fontFamily: "monospace"}}>Smart_Home_Controller.bit</span>
+               <span style={{fontSize: 12, color: "#888", marginLeft: 12, fontFamily: "monospace"}}>bitblock.lol</span>
             </div>
             <img src="/demo/ide_overview.png" alt="BitBlock Visual Editor" style={{ width: "100%", display: "block" }} />
           </div>
@@ -195,8 +195,14 @@ export default function LandingPage() {
                      <h3 style={{ fontSize: 24, fontWeight: 700, marginBottom: 16 }}>Design visually with blocks</h3>
                      <p style={{ color: "rgba(242,242,240,0.6)", fontSize: 16, lineHeight: 1.6 }}>Choose from over 150+ pre-built logic and hardware blocks. Read sensors, control motors, and build complex state machines without writing a single line of syntax.</p>
                   </div>
-                  <div style={{ flex: "1 1 400px", background: "#111", borderRadius: 16, border: "1px solid #333", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                     <img src="/demo/ide_overview.png" alt="Blocks" style={{ width: "100%", display: "block" }} />
+                  <div style={{ flex: "1 1 400px", background: "#0A0A0A", borderRadius: 16, border: "1px solid rgba(157,39,222,0.3)", overflow: "hidden", boxShadow: "0 10px 30px rgba(0,0,0,0.5)" }}>
+                    <div style={{ height: 40, background: "#111", borderBottom: "1px solid rgba(255,255,255,0.05)", display: "flex", alignItems: "center", padding: "0 16px", gap: 8 }}>
+                       <div style={{width: 10, height: 10, borderRadius: "50%", background: "#EF4444"}} />
+                       <div style={{width: 10, height: 10, borderRadius: "50%", background: "#F59E0B"}} />
+                       <div style={{width: 10, height: 10, borderRadius: "50%", background: "#22C55E"}} />
+                       <span style={{fontSize: 12, color: "#888", marginLeft: 12, fontFamily: "monospace"}}>bitblock.lol</span>
+                    </div>
+                    <img src="/demo/ide_overview.png" alt="Blocks" style={{ width: "100%", display: "block" }} />
                   </div>
                </div>
 
@@ -207,8 +213,14 @@ export default function LandingPage() {
                      <h3 style={{ fontSize: 24, fontWeight: 700, marginBottom: 16 }}>Cloud compile instantly</h3>
                      <p style={{ color: "rgba(242,242,240,0.6)", fontSize: 16, lineHeight: 1.6 }}>Our cloud infrastructure takes your visual blocks, generates optimized C++ code, and compiles it for your specific board architecture in seconds. No local toolchains required.</p>
                   </div>
-                  <div style={{ flex: "1 1 400px", background: "#0A0A0A", borderRadius: 16, border: "1px solid #222", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", padding: "60px 0" }}>
-                     <CloudLightning size={120} color="#9D27DE" className="animate-pulse-glow" style={{ borderRadius: "50%" }} />
+                  <div style={{ flex: "1 1 400px", background: "#0A0A0A", borderRadius: 16, border: "1px solid rgba(157,39,222,0.3)", overflow: "hidden", boxShadow: "0 10px 30px rgba(0,0,0,0.5)" }}>
+                    <div style={{ height: 40, background: "#111", borderBottom: "1px solid rgba(255,255,255,0.05)", display: "flex", alignItems: "center", padding: "0 16px", gap: 8 }}>
+                       <div style={{width: 10, height: 10, borderRadius: "50%", background: "#EF4444"}} />
+                       <div style={{width: 10, height: 10, borderRadius: "50%", background: "#F59E0B"}} />
+                       <div style={{width: 10, height: 10, borderRadius: "50%", background: "#22C55E"}} />
+                       <span style={{fontSize: 12, color: "#888", marginLeft: 12, fontFamily: "monospace"}}>bitblock.lol</span>
+                    </div>
+                    <img src="/demo/compile.png" alt="Cloud Compile" style={{ width: "100%", display: "block" }} />
                   </div>
                </div>
 
@@ -219,12 +231,70 @@ export default function LandingPage() {
                      <h3 style={{ fontSize: 24, fontWeight: 700, marginBottom: 16 }}>Flash directly from Chrome</h3>
                      <p style={{ color: "rgba(242,242,240,0.6)", fontSize: 16, lineHeight: 1.6 }}>Plug your ESP32 or Arduino into your computer's USB port. BitBlock uses the secure WebSerial API to flash the firmware directly from the browser window. It just works.</p>
                   </div>
-                  <div style={{ flex: "1 1 400px", background: "#111", borderRadius: 16, border: "1px solid #333", overflow: "hidden" }}>
-                     <img src="/demo/flash_wizard.png" alt="Flash Wizard" style={{ width: "100%", display: "block" }} />
+                  <div style={{ flex: "1 1 400px", background: "#0A0A0A", borderRadius: 16, border: "1px solid rgba(157,39,222,0.3)", overflow: "hidden", boxShadow: "0 10px 30px rgba(0,0,0,0.5)" }}>
+                    <div style={{ height: 40, background: "#111", borderBottom: "1px solid rgba(255,255,255,0.05)", display: "flex", alignItems: "center", padding: "0 16px", gap: 8 }}>
+                       <div style={{width: 10, height: 10, borderRadius: "50%", background: "#EF4444"}} />
+                       <div style={{width: 10, height: 10, borderRadius: "50%", background: "#F59E0B"}} />
+                       <div style={{width: 10, height: 10, borderRadius: "50%", background: "#22C55E"}} />
+                       <span style={{fontSize: 12, color: "#888", marginLeft: 12, fontFamily: "monospace"}}>bitblock.lol</span>
+                    </div>
+                    <img src="/demo/flash_wizard.png" alt="Flash Wizard" style={{ width: "100%", display: "block" }} />
                   </div>
                </div>
             </div>
          </div>
+      </section>
+
+      {/* Edge ML Section */}
+      <section style={{ padding: "100px 40px", background: "linear-gradient(180deg, #0A0A0A 0%, rgba(157,39,222,0.05) 100%)" }}>
+        <div style={{ maxWidth: 1000, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: 60 }}>
+            <div className="badge badge-purple" style={{ marginBottom: 16 }}>TinyML Built-In</div>
+            <h2 style={{ fontSize: "clamp(28px, 4vw, 40px)", fontWeight: 700, color: "#F2F2F0", marginBottom: 16 }}>
+              Train AI models for the edge. <br /><span className="gradient-text">Without Python.</span>
+            </h2>
+            <p style={{ color: "rgba(242,242,240,0.6)", fontSize: 18, maxWidth: 650, margin: "0 auto" }}>
+              Our integrated Machine Learning pipeline lets you collect data from sensors, train neural networks in the cloud, and deploy them to your microcontroller as a single visual block.
+            </p>
+          </div>
+
+          <div style={{ display: "flex", gap: 40, alignItems: "center", flexWrap: "wrap", flexDirection: "row-reverse" }}>
+             <div style={{ flex: "1 1 400px" }}>
+                <ul style={{ display: "flex", flexDirection: "column", gap: 24, padding: 0, listStyle: "none" }}>
+                  <li>
+                    <h4 style={{ color: "#F2F2F0", fontSize: 18, fontWeight: 700, marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
+                      <span style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(157,39,222,0.1)", color: "#9D27DE", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>1</span>
+                      Live Data Collection
+                    </h4>
+                    <p style={{ color: "rgba(242,242,240,0.6)", fontSize: 15, paddingLeft: 44, margin: 0, lineHeight: 1.5 }}>Stream raw accelerometer or sensor data directly from your board into our browser-based data labeling tool.</p>
+                  </li>
+                  <li>
+                    <h4 style={{ color: "#F2F2F0", fontSize: 18, fontWeight: 700, marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
+                      <span style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(157,39,222,0.1)", color: "#9D27DE", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>2</span>
+                      Cloud Training
+                    </h4>
+                    <p style={{ color: "rgba(242,242,240,0.6)", fontSize: 15, paddingLeft: 44, margin: 0, lineHeight: 1.5 }}>We handle the TensorFlow logic. Just choose your architecture, click train, and let our cloud compute nodes build your model.</p>
+                  </li>
+                  <li>
+                    <h4 style={{ color: "#F2F2F0", fontSize: 18, fontWeight: 700, marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
+                      <span style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(157,39,222,0.1)", color: "#9D27DE", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>3</span>
+                      Instant Inference
+                    </h4>
+                    <p style={{ color: "rgba(242,242,240,0.6)", fontSize: 15, paddingLeft: 44, margin: 0, lineHeight: 1.5 }}>The trained model is automatically quantized and converted into a custom visual block. Snap it into your workspace and run offline inference.</p>
+                  </li>
+                </ul>
+             </div>
+             <div style={{ flex: "1 1 400px", background: "#0A0A0A", borderRadius: 16, border: "1px solid rgba(157,39,222,0.3)", overflow: "hidden", boxShadow: "0 10px 30px rgba(0,0,0,0.5)" }}>
+               <div style={{ height: 40, background: "#111", borderBottom: "1px solid rgba(255,255,255,0.05)", display: "flex", alignItems: "center", padding: "0 16px", gap: 8 }}>
+                  <div style={{width: 10, height: 10, borderRadius: "50%", background: "#EF4444"}} />
+                  <div style={{width: 10, height: 10, borderRadius: "50%", background: "#F59E0B"}} />
+                  <div style={{width: 10, height: 10, borderRadius: "50%", background: "#22C55E"}} />
+                  <span style={{fontSize: 12, color: "#888", marginLeft: 12, fontFamily: "monospace"}}>bitblock.lol</span>
+               </div>
+               <img src="/demo/ai_lab.png" alt="ML Pipeline" style={{ width: "100%", display: "block" }} />
+             </div>
+          </div>
+        </div>
       </section>
 
       {/* Features Grid */}
