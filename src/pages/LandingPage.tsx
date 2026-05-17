@@ -161,7 +161,7 @@ export default function LandingPage() {
           </div>
 
           <div style={{ display: "flex", gap: 40, alignItems: "center", flexWrap: "wrap", flexDirection: "row-reverse" }}>
-             <div style={{ flex: "1 1 400px" }}>
+             <div style={{ flex: "1 1 min(100%, 400px)" }}>
                 <ul style={{ display: "flex", flexDirection: "column", gap: 24, padding: 0, listStyle: "none" }}>
                   <li>
                     <h4 style={{ color: "#F2F2F0", fontSize: 18, fontWeight: 700, marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
@@ -186,7 +186,7 @@ export default function LandingPage() {
                   </li>
                 </ul>
              </div>
-             <div style={{ flex: "1 1 400px", background: "#0A0A0A", borderRadius: 16, border: "1px solid rgba(157,39,222,0.3)", overflow: "hidden", boxShadow: "0 10px 30px rgba(0,0,0,0.5)" }}>
+             <div style={{ flex: "1 1 min(100%, 400px)", background: "#0A0A0A", borderRadius: 16, border: "1px solid rgba(157,39,222,0.3)", overflow: "hidden", boxShadow: "0 10px 30px rgba(0,0,0,0.5)" }}>
                <div style={{ height: 40, background: "#111", borderBottom: "1px solid rgba(255,255,255,0.05)", display: "flex", alignItems: "center", padding: "0 16px", gap: 8 }}>
                   <div style={{width: 10, height: 10, borderRadius: "50%", background: "#EF4444"}} />
                   <div style={{width: 10, height: 10, borderRadius: "50%", background: "#F59E0B"}} />
@@ -211,7 +211,7 @@ export default function LandingPage() {
             </p>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 32 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))", gap: 32 }}>
             <div className="card" style={{ background: "rgba(239, 68, 68, 0.05)", borderColor: "rgba(239, 68, 68, 0.2)" }}>
               <div style={{ color: "#EF4444", fontWeight: 700, fontSize: 14, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 16 }}>The Old Way</div>
               <ul style={{ display: "flex", flexDirection: "column", gap: 12, color: "rgba(242,242,240,0.6)", padding: 0, listStyle: "none" }}>
@@ -242,12 +242,12 @@ export default function LandingPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 80 }}>
                {/* Step 1 */}
                <div style={{ display: "flex", gap: 40, alignItems: "center", flexWrap: "wrap" }}>
-                  <div style={{ flex: "1 1 400px" }}>
+                  <div style={{ flex: "1 1 min(100%, 400px)" }}>
                      <div style={{ color: "#9D27DE", fontWeight: 800, fontSize: 64, lineHeight: 1, opacity: 0.5, marginBottom: 16 }}>1</div>
                      <h3 style={{ fontSize: 24, fontWeight: 700, marginBottom: 16 }}>Design visually with blocks</h3>
                      <p style={{ color: "rgba(242,242,240,0.6)", fontSize: 16, lineHeight: 1.6 }}>Choose from over 150+ pre-built logic and hardware blocks. Read sensors, control motors, and build complex state machines without writing a single line of syntax.</p>
                   </div>
-                  <div style={{ flex: "1 1 400px", background: "#0A0A0A", borderRadius: 16, border: "1px solid rgba(157,39,222,0.3)", overflow: "hidden", boxShadow: "0 10px 30px rgba(0,0,0,0.5)" }}>
+                  <div style={{ flex: "1 1 min(100%, 400px)", background: "#0A0A0A", borderRadius: 16, border: "1px solid rgba(157,39,222,0.3)", overflow: "hidden", boxShadow: "0 10px 30px rgba(0,0,0,0.5)" }}>
                     <div style={{ height: 40, background: "#111", borderBottom: "1px solid rgba(255,255,255,0.05)", display: "flex", alignItems: "center", padding: "0 16px", gap: 8 }}>
                        <div style={{width: 10, height: 10, borderRadius: "50%", background: "#EF4444"}} />
                        <div style={{width: 10, height: 10, borderRadius: "50%", background: "#F59E0B"}} />
@@ -260,12 +260,12 @@ export default function LandingPage() {
 
                {/* Step 2 */}
                <div style={{ display: "flex", gap: 40, alignItems: "center", flexWrap: "wrap", flexDirection: "row-reverse" }}>
-                  <div style={{ flex: "1 1 400px" }}>
+                  <div style={{ flex: "1 1 min(100%, 400px)" }}>
                      <div style={{ color: "#9D27DE", fontWeight: 800, fontSize: 64, lineHeight: 1, opacity: 0.5, marginBottom: 16 }}>2</div>
                      <h3 style={{ fontSize: 24, fontWeight: 700, marginBottom: 16 }}>Cloud compile instantly</h3>
                      <p style={{ color: "rgba(242,242,240,0.6)", fontSize: 16, lineHeight: 1.6 }}>Our cloud infrastructure takes your visual blocks, generates optimized C++ code, and compiles it for your specific board architecture in seconds. No local toolchains required.</p>
                   </div>
-                  <div style={{ flex: "1 1 400px", background: "#0A0A0A", borderRadius: 16, border: "1px solid rgba(157,39,222,0.3)", overflow: "hidden", boxShadow: "0 10px 30px rgba(0,0,0,0.5)" }}>
+                  <div style={{ flex: "1 1 min(100%, 400px)", background: "#0A0A0A", borderRadius: 16, border: "1px solid rgba(157,39,222,0.3)", overflow: "hidden", boxShadow: "0 10px 30px rgba(0,0,0,0.5)" }}>
                     <div style={{ height: 40, background: "#111", borderBottom: "1px solid rgba(255,255,255,0.05)", display: "flex", alignItems: "center", padding: "0 16px", gap: 8 }}>
                        <div style={{width: 10, height: 10, borderRadius: "50%", background: "#EF4444"}} />
                        <div style={{width: 10, height: 10, borderRadius: "50%", background: "#F59E0B"}} />
@@ -278,12 +278,12 @@ export default function LandingPage() {
 
                {/* Step 3 */}
                <div style={{ display: "flex", gap: 40, alignItems: "center", flexWrap: "wrap" }}>
-                  <div style={{ flex: "1 1 400px" }}>
+                  <div style={{ flex: "1 1 min(100%, 400px)" }}>
                      <div style={{ color: "#9D27DE", fontWeight: 800, fontSize: 64, lineHeight: 1, opacity: 0.5, marginBottom: 16 }}>3</div>
                      <h3 style={{ fontSize: 24, fontWeight: 700, marginBottom: 16 }}>Flash directly from Chrome</h3>
                      <p style={{ color: "rgba(242,242,240,0.6)", fontSize: 16, lineHeight: 1.6 }}>Plug your ESP32 or Arduino into your computer's USB port. BitBlock uses the secure WebSerial API to flash the firmware directly from the browser window. It just works.</p>
                   </div>
-                  <div style={{ flex: "1 1 400px", background: "#0A0A0A", borderRadius: 16, border: "1px solid rgba(157,39,222,0.3)", overflow: "hidden", boxShadow: "0 10px 30px rgba(0,0,0,0.5)" }}>
+                  <div style={{ flex: "1 1 min(100%, 400px)", background: "#0A0A0A", borderRadius: 16, border: "1px solid rgba(157,39,222,0.3)", overflow: "hidden", boxShadow: "0 10px 30px rgba(0,0,0,0.5)" }}>
                     <div style={{ height: 40, background: "#111", borderBottom: "1px solid rgba(255,255,255,0.05)", display: "flex", alignItems: "center", padding: "0 16px", gap: 8 }}>
                        <div style={{width: 10, height: 10, borderRadius: "50%", background: "#EF4444"}} />
                        <div style={{width: 10, height: 10, borderRadius: "50%", background: "#F59E0B"}} />
@@ -324,9 +324,10 @@ export default function LandingPage() {
           </div>
 
           {/* Comparison Table */}
-          <div style={{ borderRadius: 16, border: "1px solid rgba(157,39,222,0.2)", overflow: "hidden", background: "#0A0A0A" }}>
-            {/* Header */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", background: "#111", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+          <div className="comparison-table" style={{ borderRadius: 16, border: "1px solid rgba(157,39,222,0.2)", overflow: "hidden", background: "#0A0A0A" }}>
+            <div className="comparison-table-inner" style={{ minWidth: 700 }}>
+              {/* Header */}
+            <div className="comparison-header" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", background: "#111", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
               <div style={{ padding: "16px 20px", fontSize: 13, color: "rgba(242,242,240,0.4)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}></div>
               <div style={{ padding: "16px 20px", fontSize: 13, color: "rgba(242,242,240,0.5)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", textAlign: "center" }}>Edge Impulse</div>
               <div style={{ padding: "16px 20px", fontSize: 13, color: "#9D27DE", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", textAlign: "center" }}>BitBlock</div>
@@ -342,15 +343,16 @@ export default function LandingPage() {
               { label: "Training Feedback", ei: "Train, wait, see final accuracy. Limited experiment tracking on free tier.", bb: "Live epoch-by-epoch loss/accuracy, per-class F1, confusion matrix, hard-example identification", bbWin: true },
               { label: "Production License", ei: "Enterprise subscription required for >1000 units. Contact sales for pricing.", bb: "Open source firmware output. Deploy wherever you want.", bbWin: true },
             ].map((row, i) => (
-              <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", borderBottom: i < 7 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
-                <div style={{ padding: "16px 20px", fontSize: 13, color: "#F2F2F0", fontWeight: 600, display: "flex", alignItems: "center" }}>{row.label}</div>
-                <div style={{ padding: "16px 20px", fontSize: 13, color: "rgba(242,242,240,0.4)", lineHeight: 1.5, display: "flex", alignItems: "center", borderLeft: "1px solid rgba(255,255,255,0.05)", borderRight: "1px solid rgba(255,255,255,0.05)" }}>{row.ei}</div>
-                <div style={{ padding: "16px 20px", fontSize: 13, color: row.bbWin ? "#F2F2F0" : "rgba(242,242,240,0.4)", lineHeight: 1.5, display: "flex", alignItems: "center", gap: 8, background: row.bbWin ? "rgba(157,39,222,0.05)" : "transparent" }}>
+              <div key={i} className="comparison-row" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", borderBottom: i < 7 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
+                <div className="feature-cell" style={{ padding: "16px 20px", fontSize: 13, color: "#F2F2F0", fontWeight: 600, display: "flex", alignItems: "center" }}>{row.label}</div>
+                <div className="ei-cell" style={{ padding: "16px 20px", fontSize: 13, color: "rgba(242,242,240,0.4)", lineHeight: 1.5, display: "flex", alignItems: "center", borderLeft: "1px solid rgba(255,255,255,0.05)", borderRight: "1px solid rgba(255,255,255,0.05)" }}>{row.ei}</div>
+                <div className="bb-cell" style={{ padding: "16px 20px", fontSize: 13, color: row.bbWin ? "#F2F2F0" : "rgba(242,242,240,0.4)", lineHeight: 1.5, display: "flex", alignItems: "center", gap: 8, background: row.bbWin ? "rgba(157,39,222,0.05)" : "transparent" }}>
                   {row.bbWin && <CheckCircle2 size={14} color="#9D27DE" style={{flexShrink: 0}} />}
-                  {row.bb}
+                  <span>{row.bb}</span>
                 </div>
               </div>
             ))}
+            </div>
           </div>
 
           <p style={{ textAlign: "center", marginTop: 32, fontSize: 14, color: "rgba(242,242,240,0.4)", fontStyle: "italic" }}>

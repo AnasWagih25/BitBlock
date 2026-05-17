@@ -43,7 +43,7 @@
   nav.glass-dark {
     padding: 0 16px !important;
     height: 56px !important;
-    position: relative !important;
+    position: fixed !important;
   }
 
   /* Nav links container — hide on mobile */
@@ -100,6 +100,56 @@
   }
 
   /* ── LANDING PAGE ──────────────────────────────────────────── */
+  [data-page="landing"] section {
+    padding: 60px 20px !important;
+  }
+
+  /* Comparison Table Mobile Overrides */
+  [data-page="landing"] .comparison-table-inner {
+    min-width: 100% !important;
+  }
+  
+  [data-page="landing"] .comparison-header {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+  }
+  
+  [data-page="landing"] .comparison-header > div:first-child {
+    display: none !important;
+  }
+  
+  [data-page="landing"] .comparison-row {
+    grid-template-columns: 1fr 1fr !important;
+    padding: 0 !important;
+  }
+  
+  [data-page="landing"] .comparison-row > div {
+    padding: 16px 12px !important;
+    border: none !important;
+  }
+  
+  [data-page="landing"] .feature-cell {
+    grid-column: 1 / -1 !important;
+    justify-content: center !important;
+    text-align: center !important;
+    padding: 10px !important;
+    background: rgba(255,255,255,0.03) !important;
+    border-bottom: 1px solid rgba(255,255,255,0.05) !important;
+    font-size: 13px !important;
+    color: #9D27DE !important;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  
+  [data-page="landing"] .ei-cell {
+    border-right: 1px solid rgba(255,255,255,0.05) !important;
+    align-items: flex-start !important;
+  }
+
+  [data-page="landing"] .bb-cell {
+    background: transparent !important;
+    align-items: flex-start !important;
+  }
   [data-page="landing"] .hero-grid {
     grid-template-columns: 1fr !important;
     gap: 40px !important;
