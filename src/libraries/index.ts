@@ -2,7 +2,7 @@ import { defineSensorBlocks, getSensorCategory } from "./Sensors";
 import { defineDisplayBlocks, getDisplayCategory } from "./Display";
 import { defineMotorBlocks, getMotorCategory } from "./Motors";
 import { defineCommunicationBlocks, getCommunicationCategory } from "./Communication";
-import { defineCameraStorageTimeBlocks, getCameraStorageTimeCategory } from "./CameraStorageTime";
+import { defineCameraStorageTimeBlocks, getCameraStorageTimeCategory, getCameraCategory } from "./CameraStorageTime";
 import { defineAdvancedCommunicationBlocks, getAdvancedCommunicationCategory } from "./AdvancedCommunication";
 import { defineNavigationBlocks, getNavigationCategory } from "./Navigation";
 import { defineAudioMediaBlocks, getAudioMediaCategory } from "./AudioMedia";
@@ -26,6 +26,7 @@ export function getAllLibraryCategories() {
     getDisplayCategory(),
     getMotorCategory(),
     getCommunicationCategory(),
+    getCameraCategory(),
     getCameraStorageTimeCategory(),
     getAdvancedCommunicationCategory(),
     getNavigationCategory(),

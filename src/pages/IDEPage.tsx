@@ -8,6 +8,7 @@ import { useUsage } from "../hooks/useUsage";
 import CassetteMascot from "../components/ui/CassetteMascot";
 import PlanLimitBanner from "../components/PlanLimitBanner";
 import SerialConnectionModal from "../components/ui/SerialConnectionModal";
+import SerialMonitor from "../components/ui/SerialMonitor";
 import { BOARDS, getBoardConfig } from "../boards/registry";
 import { TASK_ARCHITECTURES, ML_ARCHITECTURES } from "../boards/MLCapabilities";
 import { compiler } from "../compiler/assembler";
@@ -73,7 +74,7 @@ export default function IDEPage() {
   const [connectedPort, setConnectedPort] = useState<any>(null);
   const [mlTask, setMlTask] = useState<string>("gesture");
   const [mlArch, setMlArch] = useState<string>("");
-  const [trainedModel, setTrainedModel] = useState<{ blockId: string, arch: string, headerUrl: string, labels: string[], diagnostics?: any } | null>(null);
+  const [trainedModel, setTrainedModel] = useState<{ blockId: string, arch: string, headerUrl: string, labels: string[], diagnostics?: any, jobId?: string } | null>(null);
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const [activeGuide, setActiveGuide] = useState<{ label: string, content: any } | null>(null);
   const [promptDialog, setPromptDialog] = useState<{ message: string, defaultValue: string, callback: (v: string | null) => void } | null>(null);
@@ -305,7 +306,7 @@ export default function IDEPage() {
         ? project.mlActiveTrainingJobId
         : null;
 
-    const applyJob = (job: Record<string, unknown> | undefined) => {
+    const applyJob = (job: Record<string, unknown> | undefined, jobId: string) => {
       if (job?.headerUrl && job?.arch && job?.labels) {
         const arch = String(job.arch);
         // Extract threshold specifically (C1 fix)
@@ -318,6 +319,7 @@ export default function IDEPage() {
           headerUrl: String(job.headerUrl),
           labels: job.labels as string[],
           diagnostics: threshold !== undefined ? { anomalyThreshold: threshold } : undefined,
+          jobId,
         });
       } else {
         setTrainedModel(null);
@@ -331,7 +333,7 @@ export default function IDEPage() {
           return;
         }
         const data = snap.data();
-        if (data.status === "completed") applyJob(data);
+        if (data.status === "completed") applyJob(data, snap.id);
         else setTrainedModel(null);
       });
       return () => unsub();
@@ -346,7 +348,7 @@ export default function IDEPage() {
       const docs = snap.docs
         .slice()
         .sort((a, b) => asMillis(b.data().startedAt) - asMillis(a.data().startedAt));
-      if (docs.length > 0) applyJob(docs[0].data());
+      if (docs.length > 0) applyJob(docs[0].data(), docs[0].id);
       else setTrainedModel(null);
     });
     return () => unsubscribe();
@@ -428,7 +430,7 @@ export default function IDEPage() {
 
     if (currentModel && blocklyInstance) {
       const archName = ML_ARCHITECTURES[currentModel.arch]?.name || currentModel.arch;
-      generateMLBlock(blocklyInstance, currentModel.arch, archName, currentModel.labels, currentModel.diagnostics);
+      generateMLBlock(blocklyInstance, currentModel.arch, archName, currentModel.labels, currentModel.diagnostics, currentModel.jobId);
       tb.contents.push({ kind: "sep" } as any);
       tb.contents.push({
         kind: "category",
@@ -1778,48 +1780,12 @@ export default function IDEPage() {
           )}
 
           {panelTab === "serial" && (
-            <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-              <div style={{ padding: "8px 14px", borderBottom: "1px solid rgba(157,39,222,0.08)", display: "flex", justifyContent: "space-between" }}>
-                <span style={{ fontSize: 10, color: "rgba(242,242,240,0.3)" }}>Serial Monitor</span>
-                <div style={{ display: "flex", gap: 6 }}>
-                  <button
-                    onClick={() => setSerialAutoScroll((v) => !v)}
-                    className="btn-ghost"
-                    style={{ fontSize: 10, padding: "2px 8px" }}
-                    title={serialAutoScroll ? "Disable auto-scroll" : "Enable auto-scroll"}
-                  >
-                    {serialAutoScroll ? "Auto-scroll: On" : "Auto-scroll: Off"}
-                  </button>
-                  <button onClick={() => setSerialLog([])} className="btn-ghost" style={{ fontSize: 10, padding: "2px 8px" }}>Clear</button>
-                </div>
-              </div>
-              <div ref={serialScrollRef} style={{ flex: 1, overflow: "auto", padding: 14 }}>
-                {serialLog.length === 0 ? (
-                  <p style={{ fontSize: 12, color: "rgba(242,242,240,0.25)", fontFamily: "JetBrains Mono, monospace" }}>
-                    {flashSupported ? "Connect and flash your device to see output." : "⚠ WebSerial not supported.\nUse Chrome or Edge."}
-                  </p>
-                ) : serialLog.map((line, i) => (
-                  <div key={i} style={{
-                    fontFamily: "JetBrains Mono, monospace", fontSize: 11,
-                    color: line.includes("[Error]") ? "#f87171" : line.includes("[Flash]") ? "#4ade80" : "#E0D8F0",
-                    padding: "2px 0",
-                  }}>
-                    {line}
-                  </div>
-                ))}
-              </div>
-              <div style={{ padding: "8px 14px", borderTop: "1px solid rgba(157,39,222,0.08)" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <div style={{
-                    width: 8, height: 8, borderRadius: "50%",
-                    background: flashSupported ? "#22C55E" : "#EF4444",
-                  }} />
-                  <span style={{ fontSize: 10, color: "rgba(242,242,240,0.3)" }}>
-                    {flashSupported ? "WebSerial available" : "WebSerial not supported"}
-                  </span>
-                </div>
-              </div>
-            </div>
+            <SerialMonitor 
+              logs={serialLog}
+              onClear={() => setSerialLog([])}
+              onRequestPort={() => setShowPortSelector(true)}
+              connectedPort={connectedPort}
+            />
           )}
 
           {panelTab === "info" && (

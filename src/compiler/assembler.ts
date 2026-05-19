@@ -90,11 +90,11 @@ export class ArduinoCompiler {
       finalCode += `  ${s}\n`;
     });
     
-    if (mainCode) {
-      finalCode += `\n  // User Blocks\n${mainCode.split('\n').map(l => l ? '  ' + l : '').join('\n')}\n`;
-    }
-    
     finalCode += "}\n\nvoid loop() {\n";
+    
+    if (mainCode) {
+      finalCode += `  // User Blocks\n${mainCode.split('\n').map(l => l ? '  ' + l : '').join('\n')}\n`;
+    }
     
     // Loop background tasks
     this.loops.forEach(l => {
@@ -125,22 +125,18 @@ export class ArduinoCompiler {
         continue;
       }
 
-      // Dedent lines that start with a closing brace.
+      // Dedent lines that start with a closing brace just for printing
+      let printDepth = depth;
       if (trimmed.startsWith("}")) {
-        depth = Math.max(0, depth - 1);
+        printDepth = Math.max(0, depth - 1);
       }
 
-      formatted.push(`${INDENT.repeat(depth)}${trimmed}`);
+      formatted.push(`${INDENT.repeat(printDepth)}${trimmed}`);
 
-      // Increase indent for opening braces, excluding lines that also close in place.
+      // Update the running depth for the next line
       const openCount = (trimmed.match(/\{/g) || []).length;
       const closeCount = (trimmed.match(/\}/g) || []).length;
-      const delta = openCount - closeCount;
-      if (!trimmed.startsWith("}")) {
-        depth = Math.max(0, depth + delta);
-      } else if (delta > 0) {
-        depth += delta;
-      }
+      depth = Math.max(0, depth + openCount - closeCount);
     }
 
     return formatted.join("\n");

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   collection,
   deleteDoc,
@@ -76,6 +76,28 @@ export default function ModelRegistry({ projectId, pipelineArchitecture, activeJ
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
+  const prevLatestJobIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (jobs.length > 0) {
+      const latestJobId = jobs[0].id;
+      if (prevLatestJobIdRef.current === null) {
+        prevLatestJobIdRef.current = latestJobId;
+        if (!activeJobId || !jobs.some(j => j.id === activeJobId)) {
+          void handleUse(latestJobId);
+        }
+      } else if (prevLatestJobIdRef.current !== latestJobId) {
+        prevLatestJobIdRef.current = latestJobId;
+        if (activeJobId !== latestJobId) {
+          void handleUse(latestJobId);
+        }
+      } else if (!activeJobId) {
+        void handleUse(latestJobId);
+      }
+    } else {
+      prevLatestJobIdRef.current = null;
+    }
+  }, [jobs, activeJobId]);
 
   useEffect(() => {
     if (!projectId) {
@@ -109,14 +131,14 @@ export default function ModelRegistry({ projectId, pipelineArchitecture, activeJ
     return () => unsub();
   }, [projectId]);
 
-  const handleUse = async (jobId: string) => {
+  async function handleUse(jobId: string) {
     try {
       await updateDoc(doc(db, "projects", projectId), { mlActiveTrainingJobId: jobId });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Unknown error";
       await alert("Could not set active model: " + msg);
     }
-  };
+  }
 
   const handleDelete = async (job: CompletedTrainingJob) => {
     const ok = await confirm(

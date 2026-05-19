@@ -5,7 +5,7 @@ const path = require("path");
 const { v4: uuidv4 } = require("uuid");
 
 const app = express();
-app.use(express.json({ limit: "5mb" }));
+app.use(express.json({ limit: "50mb" }));
 const installedLibraries = new Set();
 
 const includeToLibrary = new Map([
@@ -138,7 +138,7 @@ app.post("/compile", (req, res) => {
 
     let compileOutput;
     try {
-      compileOutput = execSync(cmd, { timeout: 300000, maxBuffer: 10 * 1024 * 1024 }).toString();
+      compileOutput = execSync(cmd, { timeout: 840000, maxBuffer: 50 * 1024 * 1024 }).toString();
     } catch (compileErr) {
       const stderr = compileErr.stderr ? compileErr.stderr.toString() : "";
       const stdout = compileErr.stdout ? compileErr.stdout.toString() : "";

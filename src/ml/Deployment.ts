@@ -8,12 +8,12 @@ import { ML_ARCHITECTURES } from "../boards/MLCapabilities";
  * Sensor: windowed 1D data, much smaller.
  */
 const ARENA_SIZES: Record<string, number> = {
-  "mobilenet_v1":       120,
-  "mobilenet_v2":       140,
-  "efficientnet_lite0": 200,
-  "face_recognition":   140,
-  "fomo":                90,
-  "ssd_mobilenet_v2":   280,
+  "mobilenet_v1":       1024,   // Increased to 1024 to fix AllocateTensors failure
+  "mobilenet_v2":       1024,   // Increased to 1024 to fix AllocateTensors failure
+  "efficientnet_lite0": 1024,
+  "face_recognition":   400,
+  "fomo":               150,
+  "ssd_mobilenet_v2":   600,
   "cnn_1d_mfcc":         16,
   "ds_cnn":              16,
   "cnn_1d_imu":          12,
@@ -104,27 +104,68 @@ void initCamera_${safeName}() {
   config.pin_xclk = 0; config.pin_pclk = 22; config.pin_vsync = 25;
   config.pin_href = 23; config.pin_sccb_sda = 26; config.pin_sccb_scl = 27;
   config.pin_pwdn = 32; config.pin_reset = -1;
-  config.xclk_freq_hz = 20000000;
-  config.pixel_format = PIXFORMAT_RGB888;
+  config.xclk_freq_hz = 10000000;  // 10MHz for stability
+  config.pixel_format = PIXFORMAT_RGB565;  // Fast DMA, convert inline
   config.frame_size = FRAMESIZE_QQVGA;  // 160x120 — crop to 96x96
+  config.fb_location = CAMERA_FB_IN_PSRAM;
   config.fb_count = 1;
-  esp_camera_init(&config);
+  config.grab_mode = CAMERA_GRAB_LATEST;  // Always get freshest frame
+  if (esp_camera_init(&config) != ESP_OK) {
+    Serial.println("ERR: Camera init failed");
+    return;
+  }
+  // Let sensor AGC/AEC stabilize
+  delay(500);
+  // Discard first few frames (often corrupted)
+  for (int i = 0; i < 3; i++) {
+    camera_fb_t* fb = esp_camera_fb_get();
+    if (fb) esp_camera_fb_return(fb);
+    delay(50);
+  }
+  Serial.println("Camera ready (RGB565, 160x120)");
 }
 `;
   }
   // ESP32-S3 DevKitC or similar — no built-in camera, user must wire
   return `
-// Configure your camera pins for ${boardId}
+// Configure your camera pins for ${boardId} (AI Thinker ESP32-CAM defaults)
 void initCamera_${safeName}() {
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
-  // TODO: Set pin_d0..d7, pin_xclk, pin_pclk, pin_vsync, pin_href, pin_sccb_sda/scl, pin_pwdn, pin_reset
-  config.xclk_freq_hz = 20000000;
-  config.pixel_format = PIXFORMAT_RGB888;
+  config.pin_d0 = 5;
+  config.pin_d1 = 18;
+  config.pin_d2 = 19;
+  config.pin_d3 = 21;
+  config.pin_d4 = 36;
+  config.pin_d5 = 39;
+  config.pin_d6 = 34;
+  config.pin_d7 = 35;
+  config.pin_xclk = 0;
+  config.pin_pclk = 22;
+  config.pin_vsync = 25;
+  config.pin_href = 23;
+  config.pin_sccb_sda = 26;
+  config.pin_sccb_scl = 27;
+  config.pin_pwdn = 32;
+  config.pin_reset = -1;
+  config.xclk_freq_hz = 10000000;  // 10MHz for stability
+  config.pixel_format = PIXFORMAT_RGB565;  // Fast DMA, convert inline
   config.frame_size = FRAMESIZE_QQVGA;
+  config.fb_location = CAMERA_FB_IN_PSRAM;
   config.fb_count = 1;
-  esp_camera_init(&config);
+  config.grab_mode = CAMERA_GRAB_LATEST;
+  if (esp_camera_init(&config) != ESP_OK) {
+    Serial.println("ERR: Camera init failed. Is it connected properly?");
+    return;
+  }
+  delay(500);
+  for (int i = 0; i < 3; i++) {
+    camera_fb_t* fb = esp_camera_fb_get();
+    if (fb) esp_camera_fb_return(fb);
+    delay(50);
+  }
+  Serial.println("Camera ready (RGB565, 160x120)");
 }
 `;
 }
@@ -155,7 +196,7 @@ export function validateModelFitsBoard(architecture: string, boardId: string): s
   return null;
 }
 
-export function generateMLBlock(Blockly: any, architecture: string, modelName: string, labels: string[], trainingDiagnostics?: any) {
+export function generateMLBlock(Blockly: any, architecture: string, modelName: string, labels: string[], trainingDiagnostics?: any, jobId?: string) {
   const blockId = `ml_model_${architecture.toLowerCase().replace(/ /g, "_")}`;
   const safeName = architecture.toLowerCase().replace(/[^a-z0-9]/g, "_");
   const arenaKb = ARENA_SIZES[architecture] || 16;
@@ -168,16 +209,17 @@ export function generateMLBlock(Blockly: any, architecture: string, modelName: s
 
   Blockly.Blocks[blockId] = {
     init() {
-      this.appendDummyInput().appendField(`Run ${modelName} Inference`);
+      const shortId = jobId ? ` (${jobId.slice(0, 6)})` : "";
+      this.appendDummyInput().appendField(`Run ${modelName}${shortId} Inference`);
       this.setOutput(true, "String");
       this.setColour("#2B6CB0");
-      this.setTooltip("Runs TFLite model and returns the label with highest confidence");
+      this.setTooltip(`Runs TFLite model and returns the label with highest confidence.\nVersion: ${jobId || "latest"}\nLabels: ${labels.join(", ")}`);
     }
   };
 
   const generator = Blockly.JavaScript || Blockly.javascriptGenerator;
 
-  generator.forBlock[blockId] = function() {
+  generator.forBlock[blockId] = function(block: any) {
     const board = getBoardConfig(compiler.boardId);
     
     // C26 FIX: Strict memory validation at code-gen time
@@ -200,6 +242,7 @@ export function generateMLBlock(Blockly: any, architecture: string, modelName: s
     }
     compiler.addInclude(`#include "tensorflow/lite/micro/micro_mutable_op_resolver.h"`);
     compiler.addInclude(`#include "tensorflow/lite/micro/micro_interpreter.h"`);
+    compiler.addInclude(`#include "tensorflow/lite/micro/micro_error_reporter.h"`);
     compiler.addInclude(`#include "tensorflow/lite/schema/schema_generated.h"`);
     compiler.addInclude(`#include "${safeName}_model_data.h"  // Generated .tflite header`);
 
@@ -245,20 +288,32 @@ alignas(16) static uint8_t arena_${safeName}[kArenaSize_${safeName}];`;
       inputCode = `
   camera_fb_t* fb = esp_camera_fb_get();
   if (!fb) return "ERR:cam";
-  // Crop center 96x96 from 160x120 QQVGA frame
+  // Crop center 96x96 from 160x120 RGB565 QQVGA frame
   int src_w = fb->width, src_h = fb->height;
   int ox = (src_w - 96) / 2, oy = (src_h - 96) / 2;
+  // Pre-compute quantization params for INT8 (avoid per-pixel float ops)
+  float scale = input->params.scale;
+  int32_t zp = input->params.zero_point;
+  bool isInt8 = (input->type == kTfLiteInt8);
   for (int row = 0; row < 96; row++) {
     for (int col = 0; col < 96; col++) {
-      int si = ((oy + row) * src_w + (ox + col)) * 3;
+      // RGB565: 2 bytes per pixel, big-endian packed [RRRRRGGGGGGBBBBB]
+      int si = ((oy + row) * src_w + (ox + col)) * 2;
+      uint16_t px = (fb->buf[si] << 8) | fb->buf[si + 1];
+      // Extract and scale to 0-255
+      uint8_t r = ((px >> 11) & 0x1F) << 3;  // 5-bit -> 8-bit
+      uint8_t g = ((px >> 5) & 0x3F) << 2;   // 6-bit -> 8-bit
+      uint8_t b = (px & 0x1F) << 3;           // 5-bit -> 8-bit
       int di = (row * 96 + col) * 3;
-      for (int c = 0; c < 3; c++) {
-        float pix = (float)fb->buf[si + c] / 255.0f;
-        if (input->type == kTfLiteInt8) {
-          input->data.int8[di + c] = (int8_t)(pix / input->params.scale + input->params.zero_point);
-        } else {
-          input->data.f[di + c] = pix;
-        }
+      if (isInt8) {
+        // Integer-only quantization: q = clamp(round(pixel/255/scale) + zp)
+        input->data.int8[di + 0] = (int8_t)constrain((int)((float)r / 255.0f / scale + zp), -128, 127);
+        input->data.int8[di + 1] = (int8_t)constrain((int)((float)g / 255.0f / scale + zp), -128, 127);
+        input->data.int8[di + 2] = (int8_t)constrain((int)((float)b / 255.0f / scale + zp), -128, 127);
+      } else {
+        input->data.f[di + 0] = r / 255.0f;
+        input->data.f[di + 1] = g / 255.0f;
+        input->data.f[di + 2] = b / 255.0f;
       }
     }
   }
@@ -386,9 +441,18 @@ alignas(16) static uint8_t arena_${safeName}[kArenaSize_${safeName}];`;
     let psramSetup = "";
     if (hasPSRAM && isESP32 && arenaKb > 50) {
       psramSetup = `
+  Serial.printf("Free heap: %u, PSRAM: %u\\n", ESP.getFreeHeap(), ESP.getFreePsram());
+  if (!psramFound()) {
+    Serial.println("ERR: PSRAM not detected - check board config");
+    return;
+  }
   if (!arena_${safeName}) {
     arena_${safeName} = (uint8_t*)heap_caps_malloc(kArenaSize_${safeName}, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    if (!arena_${safeName}) arena_${safeName} = (uint8_t*)malloc(kArenaSize_${safeName});
+    if (!arena_${safeName}) {
+      Serial.println("ERR: Arena alloc failed (PSRAM)");
+      return;
+    }
+    Serial.println("Arena allocated in PSRAM");
   }`;
     }
 
@@ -412,8 +476,9 @@ ${psramSetup}
     return;
   }
 ${opResolver}
+  static tflite::MicroErrorReporter micro_error_reporter_${safeName};
   static tflite::MicroInterpreter static_interp_${safeName}(
-    model_${safeName}, resolver_${safeName}, arena_${safeName}, kArenaSize_${safeName});
+    model_${safeName}, resolver_${safeName}, arena_${safeName}, kArenaSize_${safeName}, &micro_error_reporter_${safeName});
   interpreter_${safeName} = &static_interp_${safeName};
   if (interpreter_${safeName}->AllocateTensors() != kTfLiteOk) {
     Serial.println("ERR: AllocateTensors failed");
@@ -428,13 +493,29 @@ String runInference_${blockId}() {
   if (!ml_ready_${safeName}) return "ERR:init";
   TfLiteTensor* input = interpreter_${safeName}->input(0);
 ${inputCode}
+  unsigned long t0_${safeName} = millis();
   if (interpreter_${safeName}->Invoke() != kTfLiteOk) return "ERR:invoke";
+  unsigned long dt_${safeName} = millis() - t0_${safeName};
+  Serial.printf("[ML] Inference: %lums\\n", dt_${safeName});
 ${outputCode}
 }
 `);
 
-    // Add setup call
-    compiler.addSetup(`initML_${safeName}();`);
+    // Add setup call (single Serial.begin)
+    compiler.addSetup(`Serial.begin(115200);\ndelay(2000);\nSerial.println("BitBlock ML starting...");\ninitML_${safeName}();`);
+
+    // If placed loosely on the canvas, act as an auto-printing statement loop
+    if (!block.getParent()) {
+      return `
+if (!ml_ready_${safeName}) {
+  Serial.println("ERR:init - waiting...");
+  delay(2000);
+} else {
+  String result_${safeName} = runInference_${blockId}();
+  Serial.println(result_${safeName});
+  delay(100);
+}`;
+    }
 
     return [`runInference_${blockId}()`, generator.ORDER_FUNCTION_CALL];
   };

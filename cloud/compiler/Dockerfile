@@ -14,6 +14,15 @@ RUN arduino-cli core update-index && \
 # Install common libraries (Wire/SPI are built-in, skip them)
 RUN arduino-cli lib install "TensorFlowLite_ESP32" "WiFi" "Servo" "Adafruit NeoPixel" "DHT sensor library" "Adafruit Unified Sensor" "LiquidCrystal I2C" "ArduinoJson" || true
 
+# Patch TensorFlowLite_ESP32 for GCC 10+ compilation error
+RUN sed -i 's/const size_type count_;/size_type count_;/g' /root/Arduino/libraries/TensorFlowLite_ESP32/src/third_party/flatbuffers/stl_emulation.h || true
+
+# Remove deprecated bundled LCD/bus drivers that break on ESP32 Core v3+
+RUN rm -rf /root/Arduino/libraries/TensorFlowLite_ESP32/src/screen /root/Arduino/libraries/TensorFlowLite_ESP32/src/bus || true
+
+# Fix C++17 placement new accessibility error by making operator delete public
+RUN sed -i 's/void operator delete(void\* p) {}/public: void operator delete(void\* p) {}/g' /root/Arduino/libraries/TensorFlowLite_ESP32/src/tensorflow/lite/micro/compatibility.h || true
+
 WORKDIR /app
 COPY package.json ./
 RUN npm install --production
