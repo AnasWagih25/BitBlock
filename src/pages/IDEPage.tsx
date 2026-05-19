@@ -64,7 +64,7 @@ export default function IDEPage() {
   const [firmwareBinary, setFirmwareBinary] = useState<ArrayBuffer | { parts: { offset: number, data: Uint8Array }[] } | null>(null);
   const [flashSupported, setFlashSupported] = useState(false);
   const [serialLog, setSerialLog] = useState<string[]>([]);
-  const [serialAutoScroll, setSerialAutoScroll] = useState(true);
+  const [serialAutoScroll] = useState(true);
   const [blocklyReady, setBlocklyReady] = useState(false);
   const [showCamWizard, setShowCamWizard] = useState(false);
   const [viewMode, setViewMode] = useState<"blocks" | "ml">("blocks");

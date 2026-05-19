@@ -33,13 +33,11 @@ import {
   Tag,
   Database,
   RefreshCw,
-  FolderOpen,
   Save,
   CheckCircle,
   Circle,
   LayoutGrid,
   Pencil,
-  ChevronDown,
 } from "lucide-react";
 import { useAppDialog } from "../contexts/DialogContext";
 
@@ -211,13 +209,12 @@ export default function DataCollection({
     new Set(),
   );
   const [cloudFilter, setCloudFilter] = useState("");
-  const [savedSnapshotsExpanded, setSavedSnapshotsExpanded] = useState(true);
   /** Loaded on expand: ordered slots matching snapshot sampleIds (Firestore `in` is unordered). */
   const [expandedPreview, setExpandedPreview] = useState<{
     datasetId: string;
     samples: (CloudSample | null)[];
   } | null>(null);
-  const [expandedPreviewLoading, setExpandedPreviewLoading] = useState(false);
+  const [, setExpandedPreviewLoading] = useState(false);
   const [appendDsId, setAppendDsId] = useState("");
   const [relabelModal, setRelabelModal] = useState<{ ids: string[] } | null>(
     null,
@@ -515,50 +512,7 @@ export default function DataCollection({
     }
   };
 
-  const saveSelectionAsNewDataset = async () => {
-    if (!projectId || !datasetName.trim()) {
-      await alert("Enter a name for the new dataset.");
-      return;
-    }
-    if (selectedCloudIds.size === 0) {
-      await alert(
-        "Select one or more samples in the grid (checkboxes), then save.",
-      );
-      return;
-    }
-    try {
-      const ids = Array.from(selectedCloudIds);
-      const fetched = await fetchSamplesByIds(ids);
-      if (fetched.length === 0) {
-        await alert("Could not load those samples from Firestore.");
-        return;
-      }
-      const labs = [
-        ...new Set(fetched.map((s) => normLabel(s.label)).filter(Boolean)),
-      ];
-      if (labs.length !== 1) {
-        await alert(
-          "Selected samples must share one exact label. Use bulk relabel first, or save one label at a time.",
-        );
-        return;
-      }
-      const lab = labs[0];
-      await addDoc(collection(db, "projects", projectId, "ml_datasets"), {
-        name: datasetName.trim(),
-        snapshotLabel: lab,
-        sampleCount: fetched.length,
-        labels: { [lab]: fetched.length },
-        architecture: architecture || null,
-        selected: false,
-        sampleIds: fetched.map((s) => s.id),
-        createdAt: serverTimestamp(),
-      });
-      setDatasetName("");
-      clearCloudSelection();
-    } catch (e: any) {
-      await alert("Failed to save dataset: " + (e?.message || "error"));
-    }
-  };
+
 
   const toggleDatasetSelection = async (
     dsId: string,

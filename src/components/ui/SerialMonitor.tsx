@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Play, Square, Send, Trash2, RotateCcw } from "lucide-react";
 
 interface SerialMonitorProps {
@@ -203,10 +203,10 @@ export default function SerialMonitor({ logs, onClear, onRequestPort, connectedP
     }
     try {
       addLog("[Serial] Resetting board...");
-      // Standard Arduino reset: toggle DTR
-      await connectedPort.setSignals({ dataTerminalReady: false });
-      await new Promise(r => setTimeout(r, 250));
-      await connectedPort.setSignals({ dataTerminalReady: true });
+      // Pulse EN pin low using the standard NodeMCU auto-programmer circuit logic
+      await connectedPort.setSignals({ dataTerminalReady: false, requestToSend: true });
+      await new Promise(r => setTimeout(r, 100));
+      await connectedPort.setSignals({ dataTerminalReady: false, requestToSend: false });
     } catch (err: any) {
       addLog(`[Serial] Reset failed: ${err.message}`);
     }
