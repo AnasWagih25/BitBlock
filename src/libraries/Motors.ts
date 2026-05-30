@@ -1,8 +1,10 @@
 import { compiler } from "../compiler/assembler";
 import { getBoardConfig } from "../boards/registry";
 
+import { javascriptGenerator } from "blockly/javascript";
+
 export function defineMotorBlocks(Blockly: any) {
-  const generator = Blockly.JavaScript || Blockly.javascriptGenerator;
+  const generator = javascriptGenerator as any;
   const idSafe = (v: string) => String(v).replace(/[^a-zA-Z0-9_]/g, "_");
 
   // -- SERVOS (7) --
@@ -110,7 +112,7 @@ export function defineMotorBlocks(Blockly: any) {
   if (generator) {
     // 1-7. Servos
     generator.forBlock["servo_init"] = function(block: any, generator: any) {
-      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '9';
+      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '-1';
       const pinId = idSafe(pin);
       // @ts-ignore
       const bd = getBoardConfig(compiler.boardId);
@@ -120,92 +122,97 @@ export function defineMotorBlocks(Blockly: any) {
       return "";
     };
     generator.forBlock["servo_write_angle"] = function(block: any, generator: any) {
-      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '9';
+      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '-1';
       const pinId = idSafe(pin);
-      const a = generator.valueToCode(block, 'ANGLE', generator.ORDER_ATOMIC) || '90';
+      let a = generator.valueToCode(block, 'ANGLE', generator.ORDER_ATOMIC) || '90';
+      a = compiler.emitValue(a, 'int');
       return `servo_${pinId}.write(${a});\n`;
     };
     generator.forBlock["servo_read_angle"] = function(block: any, generator: any) {
-      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '9';
+      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '-1';
       const pinId = idSafe(pin);
       return [`servo_${pinId}.read()`, generator.ORDER_FUNCTION_CALL];
     };
     generator.forBlock["servo_detach"] = function(block: any, generator: any) {
-      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '9';
+      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '-1';
       const pinId = idSafe(pin);
       return `servo_${pinId}.detach();\n`;
     };
     generator.forBlock["servo_cont_forward"] = function(block: any, generator: any) {
-      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '9';
+      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '-1';
       const pinId = idSafe(pin);
       return `servo_${pinId}.write(180);\n`;
     };
     generator.forBlock["servo_cont_backward"] = function(block: any, generator: any) {
-      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '9';
+      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '-1';
       const pinId = idSafe(pin);
       return `servo_${pinId}.write(0);\n`;
     };
     generator.forBlock["servo_cont_stop"] = function(block: any, generator: any) {
-      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '9';
+      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '-1';
       const pinId = idSafe(pin);
       return `servo_${pinId}.write(90);\n`;
     };
 
     // 8-12. L298N DC
     generator.forBlock["l298n_dc_init"] = function(block: any, generator: any) {
-      const en = generator.valueToCode(block, 'EN', generator.ORDER_ATOMIC) || '0';
-      const in1 = generator.valueToCode(block, 'IN1', generator.ORDER_ATOMIC) || '0';
-      const in2 = generator.valueToCode(block, 'IN2', generator.ORDER_ATOMIC) || '0';
+      const en = generator.valueToCode(block, 'EN', generator.ORDER_ATOMIC) || '-1';
+      const in1 = generator.valueToCode(block, 'IN1', generator.ORDER_ATOMIC) || '-1';
+      const in2 = generator.valueToCode(block, 'IN2', generator.ORDER_ATOMIC) || '-1';
       const enId = idSafe(en);
-      compiler.addSetup(`pinMode(${en}, OUTPUT);\npinMode(${in1}, OUTPUT);\npinMode(${in2}, OUTPUT);`);
+      compiler.addSetup(`pinMode(${en}, OUTPUT);\npinMode(${in1}, OUTPUT);\npinMode(${in2}, OUTPUT);\nin1_${enId} = ${in1};\nin2_${enId} = ${in2};`);
       // Attach mapping global cache
-      compiler.addGlobal(`int in1_${enId} = ${in1};`);
-      compiler.addGlobal(`int in2_${enId} = ${in2};`);
+      compiler.addGlobal(`int in1_${enId} = 0;`);
+      compiler.addGlobal(`int in2_${enId} = 0;`);
       return "";
     };
     generator.forBlock["l298n_dc_forward"] = function(block: any, generator: any) {
-      const en = generator.valueToCode(block, 'EN', generator.ORDER_ATOMIC) || '0';
+      const en = generator.valueToCode(block, 'EN', generator.ORDER_ATOMIC) || '-1';
       const enId = idSafe(en);
       compiler.addSetup(`pinMode(${en}, OUTPUT);`);
       return `digitalWrite(in1_${enId}, HIGH);\ndigitalWrite(in2_${enId}, LOW);\n`;
     };
     generator.forBlock["l298n_dc_backward"] = function(block: any, generator: any) {
-      const en = generator.valueToCode(block, 'EN', generator.ORDER_ATOMIC) || '0';
+      const en = generator.valueToCode(block, 'EN', generator.ORDER_ATOMIC) || '-1';
       const enId = idSafe(en);
       compiler.addSetup(`pinMode(${en}, OUTPUT);`);
       return `digitalWrite(in1_${enId}, LOW);\ndigitalWrite(in2_${enId}, HIGH);\n`;
     };
     generator.forBlock["l298n_dc_stop"] = function(block: any, generator: any) {
-      const en = generator.valueToCode(block, 'EN', generator.ORDER_ATOMIC) || '0';
+      const en = generator.valueToCode(block, 'EN', generator.ORDER_ATOMIC) || '-1';
       const enId = idSafe(en);
       compiler.addSetup(`pinMode(${en}, OUTPUT);`);
       return `digitalWrite(in1_${enId}, LOW);\ndigitalWrite(in2_${enId}, LOW);\nanalogWrite(${en}, 0);\n`;
     };
     generator.forBlock["l298n_dc_set_speed"] = function(block: any, generator: any) {
-      const en = generator.valueToCode(block, 'EN', generator.ORDER_ATOMIC) || '0';
-      const spd = generator.valueToCode(block, 'SPEED', generator.ORDER_ATOMIC) || '255';
+      const en = generator.valueToCode(block, 'EN', generator.ORDER_ATOMIC) || '-1';
+      let speed = generator.valueToCode(block, 'SPEED', generator.ORDER_ATOMIC) || '255';
+      speed = compiler.emitValue(speed, 'int');
       compiler.addSetup(`pinMode(${en}, OUTPUT);`);
-      return `analogWrite(${en}, ${spd});\n`;
+      return `analogWrite(${en}, ${speed});\n`;
     };
 
     // 13-15. Stepper
     generator.forBlock["a4988_stepper_init"] = function(block: any, generator: any) {
-      const dir = generator.valueToCode(block, 'DIR', generator.ORDER_ATOMIC) || '2';
-      const step = generator.valueToCode(block, 'STEP', generator.ORDER_ATOMIC) || '3';
-      const spr = generator.valueToCode(block, 'STEPS', generator.ORDER_ATOMIC) || '200';
-      compiler.addGlobal(`int a4988_dir_pin = ${dir};`);
-      compiler.addGlobal(`int a4988_step_pin = ${step};`);
-      compiler.addGlobal(`float a4988_steps_per_rev = ${spr};`);
+      const dir = generator.valueToCode(block, 'DIR', generator.ORDER_ATOMIC) || '-1';
+      const step = generator.valueToCode(block, 'STEP', generator.ORDER_ATOMIC) || '-1';
+      let spr = generator.valueToCode(block, 'STEPS', generator.ORDER_ATOMIC) || '200';
+      spr = compiler.emitValue(spr, 'float');
+      compiler.addGlobal(`int a4988_dir_pin = 0;`);
+      compiler.addGlobal(`int a4988_step_pin = 0;`);
+      compiler.addGlobal(`float a4988_steps_per_rev = 200.0f;`);
       compiler.addGlobal(`unsigned long a4988_step_delay_us = 1000;`);
-      compiler.addSetup(`pinMode(a4988_dir_pin, OUTPUT);\npinMode(a4988_step_pin, OUTPUT);`);
+      compiler.addSetup(`a4988_dir_pin = ${dir};\na4988_step_pin = ${step};\na4988_steps_per_rev = ${spr};\npinMode(a4988_dir_pin, OUTPUT);\npinMode(a4988_step_pin, OUTPUT);`);
       return "";
     };
     generator.forBlock["a4988_stepper_set_speed"] = function(block: any, generator: any) {
-      const rpm = generator.valueToCode(block, 'RPM', generator.ORDER_ATOMIC) || '60';
+      let rpm = generator.valueToCode(block, 'RPM', generator.ORDER_ATOMIC) || '15';
+      rpm = compiler.emitValue(rpm, 'float');
       return `if (${rpm} > 0 && a4988_steps_per_rev > 0) { a4988_step_delay_us = (unsigned long)(60000000.0f / (${rpm} * a4988_steps_per_rev)); }\n`;
     };
     generator.forBlock["a4988_stepper_step"] = function(block: any, generator: any) {
-      const steps = generator.valueToCode(block, 'STEPS', generator.ORDER_ATOMIC) || '0';
+      let steps = generator.valueToCode(block, 'STEPS', generator.ORDER_ATOMIC) || '200';
+      steps = compiler.emitValue(steps, 'int');
       compiler.addSetup(`pinMode(a4988_dir_pin, OUTPUT);\npinMode(a4988_step_pin, OUTPUT);`);
       compiler.addGlobal(`
 void a4988_move_steps(long steps) {
@@ -222,27 +229,35 @@ void a4988_move_steps(long steps) {
     };
 
     // 16-20. PCA9685
-    generator.forBlock["pca9685_init"] = function() {
+    const ensurePcaDeps = () => {
       compiler.addInclude(`#include <Wire.h>\n#include <Adafruit_PWMServoDriver.h>`);
       compiler.addGlobal(`Adafruit_PWMServoDriver pca = Adafruit_PWMServoDriver();`);
       compiler.addSetup(`pca.begin();\npca.setPWMFreq(60);`);
+    };
+
+    generator.forBlock["pca9685_init"] = function() {
+      ensurePcaDeps();
       return "";
     };
     generator.forBlock["pca9685_set_pwm_freq"] = function(block: any, generator: any) {
+      ensurePcaDeps();
       const freq = generator.valueToCode(block, 'FREQ', generator.ORDER_ATOMIC) || '60';
       return `pca.setPWMFreq(${freq});\n`;
     };
     generator.forBlock["pca9685_set_servo"] = function(block: any, generator: any) {
+      ensurePcaDeps();
       const ch = generator.valueToCode(block, 'CH', generator.ORDER_ATOMIC) || '0';
       const a = generator.valueToCode(block, 'ANGLE', generator.ORDER_ATOMIC) || '90';
       return `pca.setPWM(${ch}, 0, map(${a}, 0, 180, 150, 600));\n`;
     };
     generator.forBlock["pca9685_set_pwm"] = function(block: any, generator: any) {
+      ensurePcaDeps();
       const ch = generator.valueToCode(block, 'CH', generator.ORDER_ATOMIC) || '0';
       const val = generator.valueToCode(block, 'VAL', generator.ORDER_ATOMIC) || '4095';
       return `pca.setPWM(${ch}, 0, ${val});\n`;
     };
     generator.forBlock["pca9685_sleep"] = function() {
+      ensurePcaDeps();
       return `pca.sleep();\n`;
     };
 

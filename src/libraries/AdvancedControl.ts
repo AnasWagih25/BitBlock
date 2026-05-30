@@ -1,7 +1,8 @@
 import { compiler } from "../compiler/assembler";
+import { javascriptGenerator } from "blockly/javascript";
 
 export function defineAdvancedControlBlocks(Blockly: any) {
-  const generator = Blockly.javascriptGenerator || Blockly.JavaScript;
+  const generator = javascriptGenerator as any;
 
   // ─── PID Controller ───────────────────────────────────────────────────────
   Blockly.Blocks["pid_init"] = {
@@ -22,8 +23,8 @@ export function defineAdvancedControlBlocks(Blockly: any) {
       const ki = generator.valueToCode(block, "KI", 0) || "0";
       const kd = generator.valueToCode(block, "KD", 0) || "0";
       compiler.addInclude("#include <PID_v1.h>");
-      compiler.addGlobal(`double pid_setpoint = 0, pid_input = 0, pid_output = 0;\nPID myPID(&pid_input, &pid_output, &pid_setpoint, ${kp}, ${ki}, ${kd}, DIRECT);`);
-      compiler.addSetup(`myPID.SetMode(AUTOMATIC);`);
+      compiler.addGlobal(`double pid_setpoint = 0, pid_input = 0, pid_output = 0;\nPID myPID(&pid_input, &pid_output, &pid_setpoint, 1.0, 0.0, 0.0, DIRECT);`);
+      compiler.addSetup(`myPID.SetTunings(${kp}, ${ki}, ${kd});\nmyPID.SetMode(AUTOMATIC);`);
       return "";
     };
   }

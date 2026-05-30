@@ -1,8 +1,10 @@
 import { compiler } from "../compiler/assembler";
 import { getBoardConfig } from "../boards/registry";
 
+import { javascriptGenerator } from "blockly/javascript";
+
 export function defineSensorBlocks(Blockly: any) {
-  const generator = Blockly.JavaScript || Blockly.javascriptGenerator;
+  const generator = javascriptGenerator as any;
   const idSafe = (v: string) => String(v).replace(/[^a-zA-Z0-9_]/g, "_");
 
   const ensureHcsr04Helpers = () => {
@@ -201,7 +203,7 @@ float hcsr04_read_cm_val(int trig, int echo) {
   if (generator) {
     // DHT11/22
     generator.forBlock["dht11_init"] = function(block: any, generator: any) {
-      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '2';
+      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '-1';
       const pinId = idSafe(pin);
       compiler.addInclude(`#include <DHT.h>`);
       compiler.addGlobal(`DHT dht_${pinId}(${pin}, DHT11);`);
@@ -209,7 +211,7 @@ float hcsr04_read_cm_val(int trig, int echo) {
       return "";
     };
     generator.forBlock["dht22_init"] = function(block: any, generator: any) {
-      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '2';
+      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '-1';
       const pinId = idSafe(pin);
       compiler.addInclude(`#include <DHT.h>`);
       compiler.addGlobal(`DHT dht_${pinId}(${pin}, DHT22);`);
@@ -217,42 +219,42 @@ float hcsr04_read_cm_val(int trig, int echo) {
       return "";
     };
     generator.forBlock["dht_read_temp_c"] = function(block: any, generator: any) {
-      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '2';
+      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '-1';
       const pinId = idSafe(pin);
       return [`dht_${pinId}.readTemperature(false)`, generator.ORDER_FUNCTION_CALL];
     };
     generator.forBlock["dht_read_temp_f"] = function(block: any, generator: any) {
-      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '2';
+      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '-1';
       const pinId = idSafe(pin);
       return [`dht_${pinId}.readTemperature(true)`, generator.ORDER_FUNCTION_CALL];
     };
     generator.forBlock["dht_read_humidity"] = function(block: any, generator: any) {
-      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '2';
+      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '-1';
       const pinId = idSafe(pin);
       return [`dht_${pinId}.readHumidity()`, generator.ORDER_FUNCTION_CALL];
     };
 
     // HCSR04
     generator.forBlock["hcsr04_init"] = function(block: any, generator: any) {
-      const trig = generator.valueToCode(block, 'TRIG', generator.ORDER_ATOMIC) || '0';
-      const echo = generator.valueToCode(block, 'ECHO', generator.ORDER_ATOMIC) || '0';
+      const trig = generator.valueToCode(block, 'TRIG', generator.ORDER_ATOMIC) || '-1';
+      const echo = generator.valueToCode(block, 'ECHO', generator.ORDER_ATOMIC) || '-1';
       const trigId = idSafe(trig);
-      compiler.addSetup(`pinMode(${trig}, OUTPUT);\npinMode(${echo}, INPUT);`);
-      compiler.addGlobal(`int hcsr04_echo_${trigId} = ${echo};`);
+      compiler.addSetup(`pinMode(${trig}, OUTPUT);\npinMode(${echo}, INPUT);\nhcsr04_echo_${trigId} = ${echo};`);
+      compiler.addGlobal(`int hcsr04_echo_${trigId} = 0;`);
       ensureHcsr04Helpers();
       return "";
     };
     generator.forBlock["hcsr04_read_cm"] = function(block: any, generator: any) {
-      const trig = generator.valueToCode(block, 'TRIG', generator.ORDER_ATOMIC) || '0';
+      const trig = generator.valueToCode(block, 'TRIG', generator.ORDER_ATOMIC) || '-1';
       const trigId = idSafe(trig);
       ensureHcsr04Helpers();
       return [`hcsr04_read_cm_val(${trig}, hcsr04_echo_${trigId})`, generator.ORDER_FUNCTION_CALL];
     };
     generator.forBlock["hcsr04_read_in"] = function(block: any, generator: any) {
-       const trig = generator.valueToCode(block, 'TRIG', generator.ORDER_ATOMIC) || '0';
+       const trig = generator.valueToCode(block, 'TRIG', generator.ORDER_ATOMIC) || '-1';
        const trigId = idSafe(trig);
        ensureHcsr04Helpers();
-       return [`hcsr04_read_cm_val(${trig}, hcsr04_echo_${trigId}) * 0.393701f`, generator.ORDER_FUNCTION_CALL];
+       return [`hcsr04_read_cm_val(${trig}, hcsr04_echo_${trigId}) * 0.393701f`, generator.ORDER_MULTIPLICATION];
     };
 
     // BMP280
@@ -280,35 +282,35 @@ float hcsr04_read_cm_val(int trig, int echo) {
     generator.forBlock["mq135_air_qual_init"] = function() { return `// MQ135 setup\n`; };
 
     generator.forBlock["mq_sensor_read_analog"] = function(block: any, generator: any) {
-      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || 'A0';
+      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '-1';
       return [`analogRead(${pin})`, generator.ORDER_FUNCTION_CALL];
     };
     generator.forBlock["mq_sensor_read_digital"] = function(block: any, generator: any) {
-      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '0';
+      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '-1';
       compiler.addSetup(`pinMode(${pin}, INPUT);`);
       return [`digitalRead(${pin})`, generator.ORDER_FUNCTION_CALL];
     };
 
     // MISC
     generator.forBlock["pir_motion_read"] = function(block: any, generator: any) {
-      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '0';
+      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '-1';
       compiler.addSetup(`pinMode(${pin}, INPUT);`);
       return [`(digitalRead(${pin}) == HIGH)`, generator.ORDER_FUNCTION_CALL];
     };
     generator.forBlock["ldr_light_read"] = function(block: any, generator: any) {
-      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || 'A0';
+      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '-1';
       return [`analogRead(${pin})`, generator.ORDER_FUNCTION_CALL];
     };
     generator.forBlock["soil_moisture_analog"] = function(block: any, generator: any) {
-      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || 'A0';
+      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '-1';
       return [`analogRead(${pin})`, generator.ORDER_FUNCTION_CALL];
     };
     generator.forBlock["water_level_analog"] = function(block: any, generator: any) {
-      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || 'A0';
+      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '-1';
       return [`analogRead(${pin})`, generator.ORDER_FUNCTION_CALL];
     };
     generator.forBlock["sound_mic_analog"] = function(block: any, generator: any) {
-      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || 'A0';
+      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '-1';
       return [`analogRead(${pin})`, generator.ORDER_FUNCTION_CALL];
     };
 
@@ -327,26 +329,31 @@ float hcsr04_read_cm_val(int trig, int echo) {
     };
 
     // MPU6050
-    generator.forBlock["mpu6050_init"] = function() {
+    const ensureMpu6050Deps = () => {
       compiler.addInclude(`#include <Wire.h>\n#include <Adafruit_MPU6050.h>\n#include <Adafruit_Sensor.h>`);
       compiler.addGlobal(`Adafruit_MPU6050 mpu;`);
-      compiler.addSetup(`if (!mpu.begin()) { Serial.println("MPU6050 not found"); }`);
+      compiler.addSetup(`mpu.begin();`);
       compiler.addGlobal(`sensors_event_t _mpu_a, _mpu_g, _mpu_t;\nbool _mpu_fresh = false;\nunsigned long _mpu_last = 0;`);
       compiler.addGlobal(`\nvoid _mpuUpdate() {\n  if (millis() - _mpu_last < 10) return;\n  mpu.getEvent(&_mpu_a, &_mpu_g, &_mpu_t);\n  _mpu_fresh = true;\n  _mpu_last = millis();\n}`);
+    };
+
+    generator.forBlock["mpu6050_init"] = function() {
+      ensureMpu6050Deps();
+      compiler.addSetup(`if (!mpu.begin()) { Serial.println("MPU6050 not found"); }`);
       return "";
     };
-    generator.forBlock["mpu6050_read_acc_x"] = function() { return [`(_mpuUpdate(), _mpu_a.acceleration.x)`, generator.ORDER_FUNCTION_CALL]; };
-    generator.forBlock["mpu6050_read_acc_y"] = function() { return [`(_mpuUpdate(), _mpu_a.acceleration.y)`, generator.ORDER_FUNCTION_CALL]; };
-    generator.forBlock["mpu6050_read_acc_z"] = function() { return [`(_mpuUpdate(), _mpu_a.acceleration.z)`, generator.ORDER_FUNCTION_CALL]; };
-    generator.forBlock["mpu6050_read_gyro_x"] = function() { return [`(_mpuUpdate(), _mpu_g.gyro.x)`, generator.ORDER_FUNCTION_CALL]; };
-    generator.forBlock["mpu6050_read_gyro_y"] = function() { return [`(_mpuUpdate(), _mpu_g.gyro.y)`, generator.ORDER_FUNCTION_CALL]; };
-    generator.forBlock["mpu6050_read_gyro_z"] = function() { return [`(_mpuUpdate(), _mpu_g.gyro.z)`, generator.ORDER_FUNCTION_CALL]; };
+    generator.forBlock["mpu6050_read_acc_x"] = function() { ensureMpu6050Deps(); return [`(_mpuUpdate(), _mpu_a.acceleration.x)`, generator.ORDER_FUNCTION_CALL]; };
+    generator.forBlock["mpu6050_read_acc_y"] = function() { ensureMpu6050Deps(); return [`(_mpuUpdate(), _mpu_a.acceleration.y)`, generator.ORDER_FUNCTION_CALL]; };
+    generator.forBlock["mpu6050_read_acc_z"] = function() { ensureMpu6050Deps(); return [`(_mpuUpdate(), _mpu_a.acceleration.z)`, generator.ORDER_FUNCTION_CALL]; };
+    generator.forBlock["mpu6050_read_gyro_x"] = function() { ensureMpu6050Deps(); return [`(_mpuUpdate(), _mpu_g.gyro.x)`, generator.ORDER_FUNCTION_CALL]; };
+    generator.forBlock["mpu6050_read_gyro_y"] = function() { ensureMpu6050Deps(); return [`(_mpuUpdate(), _mpu_g.gyro.y)`, generator.ORDER_FUNCTION_CALL]; };
+    generator.forBlock["mpu6050_read_gyro_z"] = function() { ensureMpu6050Deps(); return [`(_mpuUpdate(), _mpu_g.gyro.z)`, generator.ORDER_FUNCTION_CALL]; };
 
     // VL53L0X
-    generator.forBlock["vl53l0x_tof_init"] = function() {
+    const ensureVl53l0xDeps = () => {
       compiler.addInclude(`#include <Adafruit_VL53L0X.h>`);
       compiler.addGlobal(`Adafruit_VL53L0X lox = Adafruit_VL53L0X();`);
-      compiler.addSetup(`if (!lox.begin()) { Serial.println("VL53L0X not found"); }`);
+      compiler.addSetup(`lox.begin();`);
       compiler.addGlobal(`
 int readToF() {
   VL53L0X_RangingMeasurementData_t measure;
@@ -354,16 +361,22 @@ int readToF() {
   if (measure.RangeStatus != 4) return measure.RangeMilliMeter;
   return -1;
 }`);
+    };
+
+    generator.forBlock["vl53l0x_tof_init"] = function() {
+      ensureVl53l0xDeps();
+      compiler.addSetup(`if (!lox.begin()) { Serial.println("VL53L0X not found"); }`);
       return "";
     };
     generator.forBlock["vl53l0x_tof_read_mm"] = function() {
+      ensureVl53l0xDeps();
       return [`readToF()`, generator.ORDER_FUNCTION_CALL];
     };
 
     // RFID
     generator.forBlock["rfid_rc522_init"] = function(block: any, generator: any) {
-      const ss = generator.valueToCode(block, 'SS', generator.ORDER_ATOMIC) || '10';
-      const rst = generator.valueToCode(block, 'RST', generator.ORDER_ATOMIC) || '9';
+      const ss = generator.valueToCode(block, 'SS', generator.ORDER_ATOMIC) || '-1';
+      const rst = generator.valueToCode(block, 'RST', generator.ORDER_ATOMIC) || '-1';
       compiler.addInclude(`#include <SPI.h>\n#include <MFRC522.h>`);
       compiler.addGlobal(`MFRC522 mfrc522(${ss}, ${rst});`);
       compiler.addSetup(`SPI.begin();\nmfrc522.PCD_Init();`);
@@ -387,7 +400,7 @@ String readRFIDCard() {
 
     // DS18B20
     generator.forBlock["ds18b20_init"] = function(block: any, generator: any) {
-      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '2';
+      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '-1';
       const pinId = idSafe(pin);
       compiler.addInclude(`#include <OneWire.h>\n#include <DallasTemperature.h>`);
       compiler.addGlobal(`OneWire oneWire_${pinId}(${pin});\nDallasTemperature ds_${pinId}(&oneWire_${pinId});`);
@@ -395,20 +408,20 @@ String readRFIDCard() {
       return "";
     };
     generator.forBlock["ds18b20_request_temp"] = function(block: any, generator: any) {
-      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '2';
+      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '-1';
       const pinId = idSafe(pin);
       return `ds_${pinId}.requestTemperatures();\n`;
     };
     generator.forBlock["ds18b20_read_temp_c"] = function(block: any, generator: any) {
-      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '2';
+      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '-1';
       const pinId = idSafe(pin);
       return [`ds_${pinId}.getTempCByIndex(0)`, generator.ORDER_FUNCTION_CALL];
     };
 
     // HX711
     generator.forBlock["hx711_init"] = function(block: any, generator: any) {
-      const dt = generator.valueToCode(block, 'DT', generator.ORDER_ATOMIC) || '4';
-      const sck = generator.valueToCode(block, 'SCK', generator.ORDER_ATOMIC) || '5';
+      const dt = generator.valueToCode(block, 'DT', generator.ORDER_ATOMIC) || '-1';
+      const sck = generator.valueToCode(block, 'SCK', generator.ORDER_ATOMIC) || '-1';
       compiler.addInclude(`#include "HX711.h"`);
       compiler.addGlobal(`HX711 scale;`);
       compiler.addSetup(`scale.begin(${dt}, ${sck});\nscale.set_scale(2280.f); // calibration factor\nscale.tare();`);
@@ -423,7 +436,7 @@ String readRFIDCard() {
 
     // TDS
     generator.forBlock["tds_init"] = function(block: any, generator: any) {
-      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || 'A0';
+      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '-1';
       const pinId = idSafe(pin);
       compiler.addInclude(`#include <GravityTDS.h>`);
       compiler.addGlobal(`GravityTDS gravityTds_${pinId};`);
@@ -436,17 +449,18 @@ String readRFIDCard() {
       return "";
     };
     generator.forBlock["tds_read_ppm"] = function(block: any, generator: any) {
-      const temp = generator.valueToCode(block, 'TEMP', generator.ORDER_ATOMIC) || '25.0';
+      let temp = generator.valueToCode(block, 'TEMP', generator.ORDER_ATOMIC) || '25.0';
+      temp = compiler.emitValue(temp, 'float');
       return [`(gravityTdsDefault ? (gravityTdsDefault->setTemperature(${temp}), gravityTdsDefault->update(), gravityTdsDefault->getTdsValue()) : 0.0f)`, generator.ORDER_FUNCTION_CALL];
     };
 
     // ECG & Pulse
     generator.forBlock["ad8232_ecg_read"] = function(block: any, generator: any) {
-      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || 'A0';
+      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '-1';
       return [`analogRead(${pin})`, generator.ORDER_FUNCTION_CALL];
     };
     generator.forBlock["pulse_sensor_read"] = function(block: any, generator: any) {
-      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || 'A0';
+      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '-1';
       return [`analogRead(${pin})`, generator.ORDER_FUNCTION_CALL];
     };
 

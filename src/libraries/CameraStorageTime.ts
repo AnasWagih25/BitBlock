@@ -1,8 +1,9 @@
 import { compiler } from "../compiler/assembler";
 import { getBoardConfig } from "../boards/registry";
+import { javascriptGenerator } from "blockly/javascript";
 
 export function defineCameraStorageTimeBlocks(Blockly: any) {
-  const generator = Blockly.JavaScript || Blockly.javascriptGenerator;
+  const generator = javascriptGenerator as any;
   const asCppString = (expr: string) => {
     if (expr.startsWith("'") && expr.endsWith("'")) {
       return compiler.wrapString(expr.slice(1, -1));
@@ -55,10 +56,10 @@ export function defineCameraStorageTimeBlocks(Blockly: any) {
     init() { this.appendValueInput("PATH").setCheck("String").appendField("SD Read File String"); this.setOutput(true, "String"); this.setColour("#718096"); }
   };
   Blockly.Blocks["sd_write_file"] = {
-    init() { this.appendValueInput("PATH").setCheck("String").appendField("SD Overwrite File"); this.appendValueInput("CONTENT").setCheck("String").appendField("Content"); this.setInputsInline(true); this.setPreviousStatement(true, null); this.setNextStatement(true, null); this.setColour("#718096"); }
+    init() { this.appendValueInput("PATH").setCheck("String").appendField("SD Overwrite File"); this.appendValueInput("CONTENT").setCheck(null).appendField("Content"); this.setInputsInline(true); this.setPreviousStatement(true, null); this.setNextStatement(true, null); this.setColour("#718096"); }
   };
   Blockly.Blocks["sd_append_file"] = {
-    init() { this.appendValueInput("PATH").setCheck("String").appendField("SD Append File"); this.appendValueInput("CONTENT").setCheck("String").appendField("Content"); this.setInputsInline(true); this.setPreviousStatement(true, null); this.setNextStatement(true, null); this.setColour("#718096"); }
+    init() { this.appendValueInput("PATH").setCheck("String").appendField("SD Append File"); this.appendValueInput("CONTENT").setCheck(null).appendField("Content"); this.setInputsInline(true); this.setPreviousStatement(true, null); this.setNextStatement(true, null); this.setColour("#718096"); }
   };
   Blockly.Blocks["sd_delete_file"] = {
     init() { this.appendValueInput("PATH").setCheck("String").appendField("SD Delete File"); this.setPreviousStatement(true, null); this.setNextStatement(true, null); this.setColour("#718096"); }
@@ -165,10 +166,16 @@ export function defineCameraStorageTimeBlocks(Blockly: any) {
     config.frame_size = FRAMESIZE_240X240;
   }
 
-  esp_err_t err = esp_camera_init(&config);
-  if (err != ESP_OK) {
-    Serial.printf("Camera init failed with error 0x%x\n", err);
-    return;
+  static bool _camera_initialized = false;
+  if (_camera_initialized) {
+    Serial.println("Camera already initialized, skipping.");
+  } else {
+    esp_err_t err = esp_camera_init(&config);
+    if (err != ESP_OK) {
+      Serial.printf("Camera init failed with error 0x%x\\n", err);
+      while(1) { delay(1000); } // halt on camera failure
+    }
+    _camera_initialized = true;
   }
 
   sensor_t * s = esp_camera_sensor_get();
@@ -205,7 +212,7 @@ export function defineCameraStorageTimeBlocks(Blockly: any) {
 
     // SD Card
     generator.forBlock["sd_init"] = function(block: any, generator: any) {
-      const cs = generator.valueToCode(block, 'CS', generator.ORDER_ATOMIC) || '4';
+      const cs = generator.valueToCode(block, 'CS', generator.ORDER_ATOMIC) || '-1';
       compiler.addInclude(`#include <SD.h>\n#include <SPI.h>`);
       compiler.addSetup(`if (!SD.begin(${cs})) { Serial.println("SD boot failed"); }`);
       return "";
@@ -291,12 +298,15 @@ void sdAppendBlock(String path, String c) {
       return "";
     };
     generator.forBlock["eeprom_write_byte"] = function(block: any, generator: any) {
-      const addr = generator.valueToCode(block, 'ADDR', generator.ORDER_ATOMIC) || '0';
-      const val = generator.valueToCode(block, 'VAL', generator.ORDER_ATOMIC) || '0';
+      let addr = generator.valueToCode(block, 'ADDR', generator.ORDER_ATOMIC) || '-1';
+      let val = generator.valueToCode(block, 'VAL', generator.ORDER_ATOMIC) || '0';
+      addr = compiler.emitValue(addr, 'int');
+      val = compiler.emitValue(val, 'int');
       return `EEPROM.write(${addr}, (uint8_t)(${val}));\n`;
     };
     generator.forBlock["eeprom_read_byte"] = function(block: any, generator: any) {
-      const addr = generator.valueToCode(block, 'ADDR', generator.ORDER_ATOMIC) || '0';
+      let addr = generator.valueToCode(block, 'ADDR', generator.ORDER_ATOMIC) || '-1';
+      addr = compiler.emitValue(addr, 'int');
       return [`EEPROM.read(${addr})`, generator.ORDER_FUNCTION_CALL];
     };
     generator.forBlock["eeprom_commit"] = function() {
@@ -309,15 +319,20 @@ void sdAppendBlock(String path, String c) {
     };
 
     // RTC DS3231
-    generator.forBlock["rtc_init"] = function() {
+    const ensureRtcDeps = () => {
       compiler.addInclude(`#include <Wire.h>\n#include <RTClib.h>`);
       compiler.addGlobal(`RTC_DS3231 rtc;`);
+      compiler.addSetup(`rtc.begin();`);
+    };
+
+    generator.forBlock["rtc_init"] = function() {
+      ensureRtcDeps();
       compiler.addSetup(`if (!rtc.begin()) { Serial.println("RTC miss"); }`);
       return "";
     };
-    generator.forBlock["rtc_get_hour"] = function() { return [`rtc.now().hour()`, generator.ORDER_FUNCTION_CALL]; };
-    generator.forBlock["rtc_get_minute"] = function() { return [`rtc.now().minute()`, generator.ORDER_FUNCTION_CALL]; };
-    generator.forBlock["rtc_get_second"] = function() { return [`rtc.now().second()`, generator.ORDER_FUNCTION_CALL]; };
+    generator.forBlock["rtc_get_hour"] = function() { ensureRtcDeps(); return [`rtc.now().hour()`, generator.ORDER_FUNCTION_CALL]; };
+    generator.forBlock["rtc_get_minute"] = function() { ensureRtcDeps(); return [`rtc.now().minute()`, generator.ORDER_FUNCTION_CALL]; };
+    generator.forBlock["rtc_get_second"] = function() { ensureRtcDeps(); return [`rtc.now().second()`, generator.ORDER_FUNCTION_CALL]; };
   }
 }
 

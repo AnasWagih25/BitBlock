@@ -230,6 +230,11 @@ body {
 .input::placeholder { color: rgba(242, 242, 240, 0.3); }
 .input:focus { border-color: var(--color-signal-purple); box-shadow: 0 0 0 3px rgba(157, 39, 222, 0.15); }
 
+option {
+  background: var(--color-surface-2);
+  color: var(--color-chalk-white);
+}
+
 /* ── Noise Texture Overlay ───────────────────────────────── */
 .noise::after {
   content: '';
@@ -364,10 +369,10 @@ body {
 }
 .tooltip:hover::after { opacity: 1; }
 
-/* ── IDE Layout ──────────────────────────────────────────── */
+/* ── IDE Layout ────────────────────────────────────── */
 .ide-layout {
   display: grid;
-  grid-template-rows: 72px 1fr 32px;
+  grid-template-rows: 60px 1fr 28px;
   grid-template-columns: 260px 1fr 340px;
   height: 100vh;
   overflow: hidden;
@@ -376,6 +381,7 @@ body {
 .ide-toolbar {
   grid-column: 1 / -1;
   grid-row: 1;
+  /* Background and border are set inline for flexibility */
 }
 
 .ide-sidebar {

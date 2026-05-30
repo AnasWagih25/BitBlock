@@ -1,11 +1,21 @@
 import { compiler } from "../compiler/assembler";
 import { getBoardConfig } from "../boards/registry";
 
+import { javascriptGenerator } from "blockly/javascript";
+
 export function defineCoreBlocks(Blockly: any) {
-  // We attach custom generator handling to the javascript generator for now
-  // since a pure C++ generator isn't included in the default blockly package
-  const generator = Blockly.JavaScript || Blockly.javascriptGenerator;
+  const generator = javascriptGenerator;
+  
+  // Prevent JS generator from prepending "var x;" to the top of the code
+  generator.finish = function(code: string) { return code; };
+
   const idSafe = (v: string) => String(v).replace(/[^a-zA-Z0-9_]/g, "_");
+  const asCppString = (expr: string) => {
+    if (expr.startsWith("'") && expr.endsWith("'")) {
+      return compiler.wrapString(expr.slice(1, -1));
+    }
+    return expr;
+  };
 
   // ─── Execution Flow (Hats) ────────────────────────────────────────────────
   Blockly.Blocks["event_setup"] = {
@@ -52,8 +62,11 @@ export function defineCoreBlocks(Blockly: any) {
     const pin = generator.valueToCode(block, "PIN", generator.ORDER_ATOMIC) || "0";
     const mode = block.getFieldValue("MODE");
     const branch = generator.statementToCode(block, "DO");
-    const isrName = `isr_${idSafe(pin)}_${Math.random().toString(36).substring(7)}`;
-    compiler.addGlobal(`void ${isrName}() {\n${branch}\n}`);
+    const isrName = `isr_pin${idSafe(pin)}_${mode.toLowerCase()}`;
+    // @ts-ignore
+    const bd = getBoardConfig(compiler.boardId);
+    const iramAttr = (bd.platform === "esp32") ? "IRAM_ATTR " : "";
+    compiler.addGlobal(`// WARNING: Variables modified inside ISRs should be declared volatile\nvoid ${iramAttr}${isrName}() {\n${branch}\n}`);
     compiler.addSetup(`pinMode(${pin}, INPUT_PULLUP);`);
     compiler.addSetup(`attachInterrupt(digitalPinToInterrupt(${pin}), ${isrName}, ${mode});`);
     return "";
@@ -260,6 +273,269 @@ export function defineCoreBlocks(Blockly: any) {
   };
 
   if (generator) {
+    // ─── Override built-in Blockly blocks to emit C++ instead of JavaScript ───
+
+    // controls_for: properly handle bidirectional loop logic
+    generator.forBlock['controls_for'] = function(block: any, generator: any) {
+      const varId = block.getFieldValue('VAR');
+      const varModel = block.workspace.getVariableMap().getVariableById(varId);
+      const varName = idSafe(varModel ? varModel.name : 'i');
+      const from = generator.valueToCode(block, 'FROM', generator.ORDER_ATOMIC) || '0';
+      const to = generator.valueToCode(block, 'TO', generator.ORDER_ATOMIC) || '10';
+      const by = generator.valueToCode(block, 'BY', generator.ORDER_ATOMIC) || '1';
+      const branch = generator.statementToCode(block, 'DO');
+
+      // Static path: both FROM and TO are literal numbers
+      if (!isNaN(Number(from)) && !isNaN(Number(to))) {
+        const isDown = Number(from) > Number(to);
+        const op = isDown ? '>=' : '<=';
+        // Use the absolute value of BY, pick += or -= based on direction
+        const absByVal = !isNaN(Number(by)) ? Math.abs(Number(by)).toString() : by;
+        const stepOp = isDown ? '-=' : '+=';
+        return `for (int ${varName} = ${from}; ${varName} ${op} ${to}; ${varName} ${stepOp} ${absByVal}) {\n${branch}}\n`;
+      } else {
+        // Dynamic path: FROM/TO are variables, decide direction at runtime
+        return `int _s_${varName} = ${from};\nint _e_${varName} = ${to};\nint _b_${varName} = ${by};\nif (_s_${varName} > _e_${varName} && _b_${varName} > 0) _b_${varName} = -_b_${varName};\nfor (int ${varName} = _s_${varName}; (_s_${varName} <= _e_${varName}) ? (${varName} <= _e_${varName}) : (${varName} >= _e_${varName}); ${varName} += _b_${varName}) {\n${branch}}\n`;
+      }
+    };
+
+    // controls_repeat_ext: repeat N times
+    generator.forBlock['controls_repeat_ext'] = function(block: any, generator: any) {
+      const times = generator.valueToCode(block, 'TIMES', generator.ORDER_ATOMIC) || '10';
+      const branch = generator.statementToCode(block, 'DO');
+      return `for (int _rep_i = 0; _rep_i < ${times}; _rep_i++) {\n${branch}}\n`;
+    };
+
+    // controls_whileUntil: while/until loop
+    generator.forBlock['controls_whileUntil'] = function(block: any, generator: any) {
+      const mode = block.getFieldValue('MODE');
+      let cond = generator.valueToCode(block, 'BOOL', generator.ORDER_ATOMIC) || 'false';
+      const branch = generator.statementToCode(block, 'DO');
+      if (mode === 'UNTIL') {
+        cond = `!(${cond})`;
+      }
+      return `while (${cond}) {\n${branch}}\n`;
+    };
+
+    // variables_set: Blockly JS emits "var x = ..." which is invalid C++
+    generator.forBlock['variables_set'] = function(block: any, generator: any) {
+      const varId = block.getFieldValue('VAR');
+      const varModel = block.workspace.getVariableMap().getVariableById(varId);
+      const varName = idSafe(varModel ? varModel.name : 'myVar');
+      const value = generator.valueToCode(block, 'VALUE', generator.ORDER_ATOMIC) || '0';
+      // Detect if value is a string expression to choose appropriate global type
+      const valTrimmed = value.trim();
+      const isStringExpr = valTrimmed.startsWith('"') || valTrimmed.startsWith('F("') ||
+        valTrimmed.startsWith('String(') || valTrimmed.startsWith('WiFi.') ||
+        valTrimmed.includes('.toString()') || valTrimmed.includes('readRFIDCard()') ||
+        valTrimmed.includes('readString()') || valTrimmed.includes('btReadStr()');
+      if (isStringExpr) {
+        compiler.addGlobal(`String ${varName} = "";`);
+      } else {
+        compiler.addGlobal(`int ${varName} = 0;`);
+      }
+      return `${varName} = ${value};\n`;
+    };
+
+    // variables_get: just return the variable name
+    generator.forBlock['variables_get'] = function(block: any, generator: any) {
+      const varId = block.getFieldValue('VAR');
+      const varModel = block.workspace.getVariableMap().getVariableById(varId);
+      const varName = idSafe(varModel ? varModel.name : 'myVar');
+      return [varName, generator.ORDER_ATOMIC];
+    };
+
+    // math_change: value += delta
+    generator.forBlock['math_change'] = function(block: any, generator: any) {
+      const varId = block.getFieldValue('VAR');
+      const varModel = block.workspace.getVariableMap().getVariableById(varId);
+      const varName = idSafe(varModel ? varModel.name : 'myVar');
+      const value = generator.valueToCode(block, 'DELTA', generator.ORDER_ATOMIC) || '1';
+      return `${varName} += ${value};\n`;
+    };
+
+    // math_number: ensure it returns just the number
+    generator.forBlock['math_number'] = function(block: any) {
+      const num = block.getFieldValue('NUM') || '0';
+      return [String(num), generator.ORDER_ATOMIC];
+    };
+
+    // text: return C++ double-quoted string instead of JS single-quoted
+    generator.forBlock['text'] = function(block: any) {
+      const text = block.getFieldValue('TEXT') || '';
+      return [compiler.wrapString(text), generator.ORDER_ATOMIC];
+    };
+
+    // logic_boolean: true/false works in both JS and C++
+    generator.forBlock['logic_boolean'] = function(block: any) {
+      const code = block.getFieldValue('BOOL') === 'TRUE' ? 'true' : 'false';
+      return [code, generator.ORDER_ATOMIC];
+    };
+
+    // logic_compare: comparison operators
+    generator.forBlock['logic_compare'] = function(block: any, generator: any) {
+      const ops: Record<string, string> = { 'EQ': '==', 'NEQ': '!=', 'LT': '<', 'LTE': '<=', 'GT': '>', 'GTE': '>=' };
+      const op = ops[block.getFieldValue('OP')] || '==';
+      const a = generator.valueToCode(block, 'A', generator.ORDER_RELATIONAL) || '0';
+      const b = generator.valueToCode(block, 'B', generator.ORDER_RELATIONAL) || '0';
+      return [`${a} ${op} ${b}`, generator.ORDER_RELATIONAL];
+    };
+
+    // logic_operation: and/or
+    generator.forBlock['logic_operation'] = function(block: any, generator: any) {
+      const op = block.getFieldValue('OP') === 'AND' ? '&&' : '||';
+      const order = block.getFieldValue('OP') === 'AND' ? generator.ORDER_LOGICAL_AND : generator.ORDER_LOGICAL_OR;
+      const a = generator.valueToCode(block, 'A', order) || 'false';
+      const b = generator.valueToCode(block, 'B', order) || 'false';
+      return [`${a} ${op} ${b}`, order];
+    };
+
+    // logic_negate: not
+    generator.forBlock['logic_negate'] = function(block: any, generator: any) {
+      const val = generator.valueToCode(block, 'BOOL', generator.ORDER_LOGICAL_NOT) || 'true';
+      return [`!${val}`, generator.ORDER_LOGICAL_NOT];
+    };
+
+    // controls_if: if/elseif/else
+    generator.forBlock['controls_if'] = function(block: any, generator: any) {
+      let code = '';
+      let n = 0;
+      // Handle IF/ELSEIF clauses
+      do {
+        const cond = generator.valueToCode(block, 'IF' + n, generator.ORDER_NONE) || 'false';
+        const branch = generator.statementToCode(block, 'DO' + n);
+        code += (n === 0 ? '' : ' else ') + `if (${cond}) {\n${branch}}`;
+        n++;
+      } while (block.getInput('IF' + n));
+      // Handle ELSE clause
+      if (block.getInput('ELSE')) {
+        const elseBranch = generator.statementToCode(block, 'ELSE');
+        if (elseBranch) {
+          code += ` else {\n${elseBranch}}`;
+        }
+      }
+      return code + '\n';
+    };
+
+    // math_arithmetic: +, -, *, /, ^
+    generator.forBlock['math_arithmetic'] = function(block: any, generator: any) {
+      const ops: Record<string, [string, number]> = {
+        'ADD': ['+', generator.ORDER_ADDITION],
+        'MINUS': ['-', generator.ORDER_SUBTRACTION],
+        'MULTIPLY': ['*', generator.ORDER_MULTIPLICATION],
+        'DIVIDE': ['/', generator.ORDER_DIVISION],
+        'POWER': ['', generator.ORDER_FUNCTION_CALL],
+      };
+      const tuple = ops[block.getFieldValue('OP')] || ['+', generator.ORDER_ADDITION];
+      const a = generator.valueToCode(block, 'A', tuple[1]) || '0';
+      const b = generator.valueToCode(block, 'B', tuple[1]) || '0';
+      if (block.getFieldValue('OP') === 'POWER') {
+        return [`pow(${a}, ${b})`, generator.ORDER_FUNCTION_CALL];
+      }
+      return [`${a} ${tuple[0]} ${b}`, tuple[1]];
+    };
+
+    // math_modulo: emit C++ integer modulo
+    generator.forBlock['math_modulo'] = function(block: any, generator: any) {
+      const a = generator.valueToCode(block, 'DIVIDEND', generator.ORDER_MODULUS) || '0';
+      const b = generator.valueToCode(block, 'DIVISOR', generator.ORDER_MODULUS) || '1';
+      return [`((int)(${a}) % (int)(${b}))`, generator.ORDER_MODULUS];
+    };
+
+    // math_random_int: emit Arduino random()
+    generator.forBlock['math_random_int'] = function(block: any, generator: any) {
+      const from = generator.valueToCode(block, 'FROM', generator.ORDER_ATOMIC) || '0';
+      const to = generator.valueToCode(block, 'TO', generator.ORDER_ATOMIC) || '100';
+      compiler.addSetup(`randomSeed(analogRead(0));`);
+      return [`random(${from}, ${to} + 1)`, generator.ORDER_FUNCTION_CALL];
+    };
+
+    // math_constrain: emit Arduino constrain()
+    generator.forBlock['math_constrain'] = function(block: any, generator: any) {
+      const val = generator.valueToCode(block, 'VALUE', generator.ORDER_ATOMIC) || '0';
+      const low = generator.valueToCode(block, 'LOW', generator.ORDER_ATOMIC) || '0';
+      const high = generator.valueToCode(block, 'HIGH', generator.ORDER_ATOMIC) || '100';
+      return [`constrain(${val}, ${low}, ${high})`, generator.ORDER_FUNCTION_CALL];
+    };
+
+    // text_join: emit Arduino String concatenation (handles mutator N-inputs)
+    generator.forBlock['text_join'] = function(block: any, generator: any) {
+      const itemCount = block.itemCount_ || 0;
+      if (itemCount === 0) return ['""', generator.ORDER_ATOMIC];
+      if (itemCount === 1) {
+        const item = generator.valueToCode(block, 'ADD0', generator.ORDER_ATOMIC) || '""';
+        return [`String(${asCppString(item)})`, generator.ORDER_FUNCTION_CALL];
+      }
+      const parts: string[] = [];
+      for (let i = 0; i < itemCount; i++) {
+        const item = generator.valueToCode(block, 'ADD' + i, generator.ORDER_ATOMIC) || '""';
+        parts.push(`String(${asCppString(item)})`);
+      }
+      return [parts.join(' + '), generator.ORDER_ADDITION];
+    };
+
+    // text_print: emit Serial.println() instead of window.alert()
+    generator.forBlock['text_print'] = function(block: any, generator: any) {
+      let msg = generator.valueToCode(block, 'TEXT', generator.ORDER_ATOMIC) || '""';
+      msg = asCppString(msg);
+      return `Serial.println(${msg});\n`;
+    };
+
+    // text_length: emit Arduino String.length()
+    generator.forBlock['text_length'] = function(block: any, generator: any) {
+      const text = generator.valueToCode(block, 'VALUE', generator.ORDER_ATOMIC) || '""';
+      return [`String(${asCppString(text)}).length()`, generator.ORDER_FUNCTION_CALL];
+    };
+
+    // ─── Procedure/Function blocks ─────────────────────────────────────────────
+
+    // procedures_defnoreturn: void function definition
+    generator.forBlock['procedures_defnoreturn'] = function(block: any, generator: any) {
+      const funcName = idSafe(block.getFieldValue('NAME') || 'myFunction');
+      const args = block.arguments_ || [];
+      const params = args.map((a: string) => `String ${idSafe(a)}`).join(', ');
+      const branch = generator.statementToCode(block, 'STACK');
+      compiler.addGlobal(`void ${funcName}(${params});`);
+      compiler.addGlobal(`void ${funcName}(${params}) {\n${branch}}`);
+      return '';
+    };
+
+    // procedures_defreturn: function with return value
+    generator.forBlock['procedures_defreturn'] = function(block: any, generator: any) {
+      const funcName = idSafe(block.getFieldValue('NAME') || 'myFunction');
+      const args = block.arguments_ || [];
+      const params = args.map((a: string) => `String ${idSafe(a)}`).join(', ');
+      const branch = generator.statementToCode(block, 'STACK');
+      const retVal = generator.valueToCode(block, 'RETURN', generator.ORDER_ATOMIC) || '""';
+      compiler.addGlobal(`String ${funcName}(${params});`);
+      compiler.addGlobal(`String ${funcName}(${params}) {\n${branch}  return ${asCppString(retVal)};\n}`);
+      return '';
+    };
+
+    // procedures_callnoreturn: call void function
+    generator.forBlock['procedures_callnoreturn'] = function(block: any, generator: any) {
+      const funcName = idSafe(block.getFieldValue('NAME') || 'myFunction');
+      const args = block.arguments_ || [];
+      const params = args.map((_: string, i: number) => {
+        const val = generator.valueToCode(block, 'ARG' + i, generator.ORDER_ATOMIC) || '""';
+        return asCppString(val);
+      }).join(', ');
+      return `${funcName}(${params});\n`;
+    };
+
+    // procedures_callreturn: call function with return value
+    generator.forBlock['procedures_callreturn'] = function(block: any, generator: any) {
+      const funcName = idSafe(block.getFieldValue('NAME') || 'myFunction');
+      const args = block.arguments_ || [];
+      const params = args.map((_: string, i: number) => {
+        const val = generator.valueToCode(block, 'ARG' + i, generator.ORDER_ATOMIC) || '""';
+        return asCppString(val);
+      }).join(', ');
+      return [`${funcName}(${params})`, generator.ORDER_FUNCTION_CALL];
+    };
+
+    // ─── End of built-in block overrides ───────────────────────────────────────
+
     generator.forBlock['gpio_digital_write'] = function(block: any, generator: any) {
       const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '0';
       const val = block.getFieldValue("STATE") || "LOW";
@@ -276,8 +552,7 @@ export function defineCoreBlocks(Blockly: any) {
     generator.forBlock['gpio_pin_mode'] = function(block: any, generator: any) {
       const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '0';
       const mode = block.getFieldValue('MODE');
-      compiler.addSetup(`pinMode(${pin}, ${mode});`);
-      return "";
+      return `pinMode(${pin}, ${mode});\n`;
     };
 
     generator.forBlock['timing_delay'] = function(block: any, generator: any) {
@@ -288,12 +563,7 @@ export function defineCoreBlocks(Blockly: any) {
     generator.forBlock['serial_print'] = function(block: any, generator: any) {
       let text = generator.valueToCode(block, 'TEXT', generator.ORDER_ATOMIC) || '""';
       const mode = block.getFieldValue('MODE');
-      
-      // Safely unquote then string-wrap via compiler mapping
-      if (text.startsWith("'") && text.endsWith("'")) {
-         text = compiler.wrapString(text.slice(1, -1));
-      }
-
+      text = asCppString(text);
       return `Serial.${mode}(${text});\n`;
     };
 

@@ -1,7 +1,9 @@
 import { compiler } from "../compiler/assembler";
 
+import { javascriptGenerator } from "blockly/javascript";
+
 export function defineDisplayBlocks(Blockly: any) {
-  const generator = Blockly.JavaScript || Blockly.javascriptGenerator;
+  const generator = javascriptGenerator as any;
   const idSafe = (v: string) => String(v).replace(/[^a-zA-Z0-9_]/g, "_");
   const asCppString = (expr: string) => {
     if (expr.startsWith("'") && expr.endsWith("'")) {
@@ -63,7 +65,7 @@ export function defineDisplayBlocks(Blockly: any) {
     init() { this.appendDummyInput().appendField("OLED Clear Local Buffer"); this.setPreviousStatement(true, null); this.setNextStatement(true, null); this.setColour("#2C5282"); }
   };
   Blockly.Blocks["oled_print_text"] = {
-    init() { this.appendValueInput("TEXT").setCheck("String").appendField("OLED Print Text"); this.appendValueInput("X").setCheck("Number").appendField("X"); this.appendValueInput("Y").setCheck("Number").appendField("Y"); this.setInputsInline(true); this.setPreviousStatement(true, null); this.setNextStatement(true, null); this.setColour("#2C5282"); }
+    init() { this.appendValueInput("TEXT").setCheck(null).appendField("OLED Print Text"); this.appendValueInput("X").setCheck("Number").appendField("X"); this.appendValueInput("Y").setCheck("Number").appendField("Y"); this.setInputsInline(true); this.setPreviousStatement(true, null); this.setNextStatement(true, null); this.setColour("#2C5282"); }
   };
   Blockly.Blocks["oled_draw_pixel"] = {
     init() { this.appendDummyInput().appendField("OLED Draw Pixel"); this.appendValueInput("X").setCheck("Number").appendField("X"); this.appendValueInput("Y").setCheck("Number").appendField("Y"); this.setInputsInline(true); this.setPreviousStatement(true, null); this.setNextStatement(true, null); this.setColour("#2C5282"); }
@@ -92,7 +94,7 @@ export function defineDisplayBlocks(Blockly: any) {
     init() { this.appendDummyInput().appendField("Init LCD 16x2 (I2C 0x27)"); this.setPreviousStatement(true, null); this.setNextStatement(true, null); this.setColour("#2B6CB0"); }
   };
   Blockly.Blocks["lcd_i2c_print"] = {
-    init() { this.appendValueInput("TEXT").setCheck("String").appendField("LCD Print String"); this.setPreviousStatement(true, null); this.setNextStatement(true, null); this.setColour("#2B6CB0"); }
+    init() { this.appendValueInput("TEXT").setCheck(null).appendField("LCD Print String"); this.setPreviousStatement(true, null); this.setNextStatement(true, null); this.setColour("#2B6CB0"); }
   };
   Blockly.Blocks["lcd_i2c_clear"] = {
     init() { this.appendDummyInput().appendField("LCD Clear"); this.setPreviousStatement(true, null); this.setNextStatement(true, null); this.setColour("#2B6CB0"); }
@@ -135,55 +137,71 @@ export function defineDisplayBlocks(Blockly: any) {
       return `digitalWrite(${pin}, !digitalRead(${pin}));\n`;
     };
     generator.forBlock["led_pwm_brightness"] = function(block: any, generator: any) {
-      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '9';
-      const val = generator.valueToCode(block, 'VAL', generator.ORDER_ATOMIC) || '128';
+      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '-1';
+      let val = generator.valueToCode(block, 'VAL', generator.ORDER_ATOMIC) || '-1';
+      val = compiler.emitValue(val, 'int');
       compiler.addSetup(`pinMode(${pin}, OUTPUT);`);
       return `analogWrite(${pin}, ${val});\n`;
     };
 
     // RGB Analog
     generator.forBlock["rgb_led_init"] = function(block: any, generator: any) {
-       const r = generator.valueToCode(block, 'R', generator.ORDER_ATOMIC) || '3';
-       const g = generator.valueToCode(block, 'G', generator.ORDER_ATOMIC) || '5';
-       const b = generator.valueToCode(block, 'B', generator.ORDER_ATOMIC) || '6';
+       let r = generator.valueToCode(block, 'R', generator.ORDER_ATOMIC) || '-1';
+       let g = generator.valueToCode(block, 'G', generator.ORDER_ATOMIC) || '-1';
+       let b = generator.valueToCode(block, 'B', generator.ORDER_ATOMIC) || '-1';
+       r = compiler.emitValue(r, 'int');
+       g = compiler.emitValue(g, 'int');
+       b = compiler.emitValue(b, 'int');
        compiler.addSetup(`pinMode(${r}, OUTPUT);\npinMode(${g}, OUTPUT);\npinMode(${b}, OUTPUT);`);
        compiler.addGlobal(`int r_pin = -1;\nint g_pin = -1;\nint b_pin = -1;`);
        compiler.addSetup(`r_pin = ${r};\ng_pin = ${g};\nb_pin = ${b};`);
        return "";
     };
     generator.forBlock["rgb_led_set_color"] = function(block: any, generator: any) {
-       const r = generator.valueToCode(block, 'R', generator.ORDER_ATOMIC) || '255';
-       const g = generator.valueToCode(block, 'G', generator.ORDER_ATOMIC) || '0';
-       const b = generator.valueToCode(block, 'B', generator.ORDER_ATOMIC) || '0';
+       let r = generator.valueToCode(block, 'R', generator.ORDER_ATOMIC) || '-1';
+       let g = generator.valueToCode(block, 'G', generator.ORDER_ATOMIC) || '-1';
+       let b = generator.valueToCode(block, 'B', generator.ORDER_ATOMIC) || '-1';
+       r = compiler.emitValue(r, 'int');
+       g = compiler.emitValue(g, 'int');
+       b = compiler.emitValue(b, 'int');
        return `analogWrite(r_pin, ${r});\nanalogWrite(g_pin, ${g});\nanalogWrite(b_pin, ${b});\n`;
     };
 
     // NeoPixels
     generator.forBlock["neopixel_init"] = function(block: any, generator: any) {
-      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '6';
-      const cnt = generator.valueToCode(block, 'COUNT', generator.ORDER_ATOMIC) || '10';
+      const pin = generator.valueToCode(block, 'PIN', generator.ORDER_ATOMIC) || '-1';
+      let cnt = generator.valueToCode(block, 'COUNT', generator.ORDER_ATOMIC) || '-1';
+      cnt = compiler.emitValue(cnt, 'int');
       compiler.addInclude(`#include <Adafruit_NeoPixel.h>`);
       compiler.addGlobal(`Adafruit_NeoPixel strip(${cnt}, ${pin}, NEO_GRB + NEO_KHZ800);`);
       compiler.addSetup(`strip.begin();\nstrip.show();`);
       return "";
     };
     generator.forBlock["neopixel_set_pixel"] = function(block: any, generator: any) {
-      const i = generator.valueToCode(block, 'IDX', generator.ORDER_ATOMIC) || '0';
-      const r = generator.valueToCode(block, 'R', generator.ORDER_ATOMIC) || '0';
-      const g = generator.valueToCode(block, 'G', generator.ORDER_ATOMIC) || '0';
-      const b = generator.valueToCode(block, 'B', generator.ORDER_ATOMIC) || '0';
+      let i = generator.valueToCode(block, 'IDX', generator.ORDER_ATOMIC) || '-1';
+      let r = generator.valueToCode(block, 'R', generator.ORDER_ATOMIC) || '-1';
+      let g = generator.valueToCode(block, 'G', generator.ORDER_ATOMIC) || '-1';
+      let b = generator.valueToCode(block, 'B', generator.ORDER_ATOMIC) || '-1';
+      i = compiler.emitValue(i, 'int');
+      r = compiler.emitValue(r, 'int');
+      g = compiler.emitValue(g, 'int');
+      b = compiler.emitValue(b, 'int');
       return `strip.setPixelColor(${i}, strip.Color(${r}, ${g}, ${b}));\n`;
     };
     generator.forBlock["neopixel_show"] = function() { return `strip.show();\n`; };
     generator.forBlock["neopixel_clear"] = function() { return `strip.clear();\n`; };
     generator.forBlock["neopixel_fill"] = function(block: any, generator: any) {
-      const r = generator.valueToCode(block, 'R', generator.ORDER_ATOMIC) || '255';
-      const g = generator.valueToCode(block, 'G', generator.ORDER_ATOMIC) || '255';
-      const b = generator.valueToCode(block, 'B', generator.ORDER_ATOMIC) || '255';
+      let r = generator.valueToCode(block, 'R', generator.ORDER_ATOMIC) || '-1';
+      let g = generator.valueToCode(block, 'G', generator.ORDER_ATOMIC) || '-1';
+      let b = generator.valueToCode(block, 'B', generator.ORDER_ATOMIC) || '-1';
+      r = compiler.emitValue(r, 'int');
+      g = compiler.emitValue(g, 'int');
+      b = compiler.emitValue(b, 'int');
       return `strip.fill(strip.Color(${r}, ${g}, ${b}), 0, strip.numPixels());\n`;
     };
     generator.forBlock["neopixel_set_brightness"] = function(block: any, generator: any) {
-      const b = generator.valueToCode(block, 'VAL', generator.ORDER_ATOMIC) || '50';
+      let b = generator.valueToCode(block, 'VAL', generator.ORDER_ATOMIC) || '-1';
+      b = compiler.emitValue(b, 'int');
       return `strip.setBrightness(${b});\n`;
     };
 
@@ -198,46 +216,58 @@ export function defineDisplayBlocks(Blockly: any) {
     generator.forBlock["oled_print_text"] = function(block: any, generator: any) {
       let txt = generator.valueToCode(block, 'TEXT', generator.ORDER_ATOMIC) || '""';
       txt = asCppString(txt);
-      const x = generator.valueToCode(block, 'X', generator.ORDER_ATOMIC) || '0';
-      const y = generator.valueToCode(block, 'Y', generator.ORDER_ATOMIC) || '0';
+      let x = generator.valueToCode(block, 'X', generator.ORDER_ATOMIC) || '-1';
+      let y = generator.valueToCode(block, 'Y', generator.ORDER_ATOMIC) || '-1';
+      x = compiler.emitValue(x, 'int');
+      y = compiler.emitValue(y, 'int');
       return `display.setCursor(${x}, ${y});\ndisplay.setTextColor(WHITE);\ndisplay.print(${txt});\n`;
     };
     generator.forBlock["oled_draw_pixel"] = function(block: any, generator: any) {
-      const x = generator.valueToCode(block, 'X', generator.ORDER_ATOMIC) || '0';
-      const y = generator.valueToCode(block, 'Y', generator.ORDER_ATOMIC) || '0';
+      let x = generator.valueToCode(block, 'X', generator.ORDER_ATOMIC) || '-1';
+      let y = generator.valueToCode(block, 'Y', generator.ORDER_ATOMIC) || '-1';
+      x = compiler.emitValue(x, 'int');
+      y = compiler.emitValue(y, 'int');
       return `display.drawPixel(${x}, ${y}, WHITE);\n`;
     };
     generator.forBlock["oled_draw_rect"] = function(block: any, generator: any) {
-      const x = generator.valueToCode(block, 'X', generator.ORDER_ATOMIC) || '0';
-      const y = generator.valueToCode(block, 'Y', generator.ORDER_ATOMIC) || '0';
-      const w = generator.valueToCode(block, 'W', generator.ORDER_ATOMIC) || '10';
-      const h = generator.valueToCode(block, 'H', generator.ORDER_ATOMIC) || '10';
+      let x = generator.valueToCode(block, 'X', generator.ORDER_ATOMIC) || '-1';
+      let y = generator.valueToCode(block, 'Y', generator.ORDER_ATOMIC) || '-1';
+      let w = generator.valueToCode(block, 'W', generator.ORDER_ATOMIC) || '-1';
+      let h = generator.valueToCode(block, 'H', generator.ORDER_ATOMIC) || '-1';
+      x = compiler.emitValue(x, 'int'); y = compiler.emitValue(y, 'int');
+      w = compiler.emitValue(w, 'int'); h = compiler.emitValue(h, 'int');
       return `display.drawRect(${x}, ${y}, ${w}, ${h}, WHITE);\n`;
     };
     generator.forBlock["oled_fill_rect"] = function(block: any, generator: any) {
-      const x = generator.valueToCode(block, 'X', generator.ORDER_ATOMIC) || '0';
-      const y = generator.valueToCode(block, 'Y', generator.ORDER_ATOMIC) || '0';
-      const w = generator.valueToCode(block, 'W', generator.ORDER_ATOMIC) || '10';
-      const h = generator.valueToCode(block, 'H', generator.ORDER_ATOMIC) || '10';
+      let x = generator.valueToCode(block, 'X', generator.ORDER_ATOMIC) || '-1';
+      let y = generator.valueToCode(block, 'Y', generator.ORDER_ATOMIC) || '-1';
+      let w = generator.valueToCode(block, 'W', generator.ORDER_ATOMIC) || '-1';
+      let h = generator.valueToCode(block, 'H', generator.ORDER_ATOMIC) || '-1';
+      x = compiler.emitValue(x, 'int'); y = compiler.emitValue(y, 'int');
+      w = compiler.emitValue(w, 'int'); h = compiler.emitValue(h, 'int');
       return `display.fillRect(${x}, ${y}, ${w}, ${h}, WHITE);\n`;
     };
     generator.forBlock["oled_draw_circle"] = function(block: any, generator: any) {
-      const x = generator.valueToCode(block, 'X', generator.ORDER_ATOMIC) || '0';
-      const y = generator.valueToCode(block, 'Y', generator.ORDER_ATOMIC) || '0';
-      const r = generator.valueToCode(block, 'R', generator.ORDER_ATOMIC) || '10';
+      let x = generator.valueToCode(block, 'X', generator.ORDER_ATOMIC) || '-1';
+      let y = generator.valueToCode(block, 'Y', generator.ORDER_ATOMIC) || '-1';
+      let r = generator.valueToCode(block, 'R', generator.ORDER_ATOMIC) || '-1';
+      x = compiler.emitValue(x, 'int'); y = compiler.emitValue(y, 'int'); r = compiler.emitValue(r, 'int');
       return `display.drawCircle(${x}, ${y}, ${r}, WHITE);\n`;
     };
     generator.forBlock["oled_fill_circle"] = function(block: any, generator: any) {
-      const x = generator.valueToCode(block, 'X', generator.ORDER_ATOMIC) || '0';
-      const y = generator.valueToCode(block, 'Y', generator.ORDER_ATOMIC) || '0';
-      const r = generator.valueToCode(block, 'R', generator.ORDER_ATOMIC) || '10';
+      let x = generator.valueToCode(block, 'X', generator.ORDER_ATOMIC) || '-1';
+      let y = generator.valueToCode(block, 'Y', generator.ORDER_ATOMIC) || '-1';
+      let r = generator.valueToCode(block, 'R', generator.ORDER_ATOMIC) || '-1';
+      x = compiler.emitValue(x, 'int'); y = compiler.emitValue(y, 'int'); r = compiler.emitValue(r, 'int');
       return `display.fillCircle(${x}, ${y}, ${r}, WHITE);\n`;
     };
     generator.forBlock["oled_draw_line"] = function(block: any, generator: any) {
-      const x0 = generator.valueToCode(block, 'X0', generator.ORDER_ATOMIC) || '0';
-      const y0 = generator.valueToCode(block, 'Y0', generator.ORDER_ATOMIC) || '0';
-      const x1 = generator.valueToCode(block, 'X1', generator.ORDER_ATOMIC) || '10';
-      const y1 = generator.valueToCode(block, 'Y1', generator.ORDER_ATOMIC) || '10';
+      let x0 = generator.valueToCode(block, 'X0', generator.ORDER_ATOMIC) || '-1';
+      let y0 = generator.valueToCode(block, 'Y0', generator.ORDER_ATOMIC) || '-1';
+      let x1 = generator.valueToCode(block, 'X1', generator.ORDER_ATOMIC) || '-1';
+      let y1 = generator.valueToCode(block, 'Y1', generator.ORDER_ATOMIC) || '-1';
+      x0 = compiler.emitValue(x0, 'int'); y0 = compiler.emitValue(y0, 'int');
+      x1 = compiler.emitValue(x1, 'int'); y1 = compiler.emitValue(y1, 'int');
       return `display.drawLine(${x0}, ${y0}, ${x1}, ${y1}, WHITE);\n`;
     };
     generator.forBlock["oled_display"] = function() { return `display.display();\n`; };
@@ -256,16 +286,17 @@ export function defineDisplayBlocks(Blockly: any) {
     };
     generator.forBlock["lcd_i2c_clear"] = function() { return `lcdcast.clear();\n`; };
     generator.forBlock["lcd_i2c_set_cursor"] = function(block: any, generator: any) {
-      const c = generator.valueToCode(block, 'COL', generator.ORDER_ATOMIC) || '0';
-      const r = generator.valueToCode(block, 'ROW', generator.ORDER_ATOMIC) || '0';
+      let c = generator.valueToCode(block, 'COL', generator.ORDER_ATOMIC) || '-1';
+      let r = generator.valueToCode(block, 'ROW', generator.ORDER_ATOMIC) || '-1';
+      c = compiler.emitValue(c, 'int'); r = compiler.emitValue(r, 'int');
       return `lcdcast.setCursor(${c}, ${r});\n`;
     };
 
     // Matrix MAX7219
     generator.forBlock["matrix8x8_init"] = function(block: any, generator: any) {
-      const din = generator.valueToCode(block, 'DIN', generator.ORDER_ATOMIC) || '11';
-      const clk = generator.valueToCode(block, 'CLK', generator.ORDER_ATOMIC) || '13';
-      const cs = generator.valueToCode(block, 'CS', generator.ORDER_ATOMIC) || '10';
+      const din = generator.valueToCode(block, 'DIN', generator.ORDER_ATOMIC) || '-1';
+      const clk = generator.valueToCode(block, 'CLK', generator.ORDER_ATOMIC) || '-1';
+      const cs = generator.valueToCode(block, 'CS', generator.ORDER_ATOMIC) || '-1';
       const matrixId = idSafe(`${din}_${clk}_${cs}`);
       compiler.addInclude(`#include <LedControl.h>`);
       compiler.addGlobal(`LedControl mtx_${matrixId} = LedControl(${din}, ${clk}, ${cs}, 1);`);
@@ -274,9 +305,10 @@ export function defineDisplayBlocks(Blockly: any) {
       return "";
     };
     generator.forBlock["matrix8x8_set_pixel"] = function(block: any, generator: any) {
-      const x = generator.valueToCode(block, 'X', generator.ORDER_ATOMIC) || '0';
-      const y = generator.valueToCode(block, 'Y', generator.ORDER_ATOMIC) || '0';
-      const s = generator.valueToCode(block, 'STATE', generator.ORDER_ATOMIC) || 'true';
+      let x = generator.valueToCode(block, 'X', generator.ORDER_ATOMIC) || '-1';
+      let y = generator.valueToCode(block, 'Y', generator.ORDER_ATOMIC) || '-1';
+      let s = generator.valueToCode(block, 'STATE', generator.ORDER_ATOMIC) || '0';
+      x = compiler.emitValue(x, 'int'); y = compiler.emitValue(y, 'int'); s = compiler.emitValue(s, 'int');
       return `if (mtxDefault) mtxDefault->setLed(0, ${x}, ${y}, ${s});\n`;
     };
     generator.forBlock["matrix8x8_clear"] = function() { return `if (mtxDefault) mtxDefault->clearDisplay(0);\n`; };

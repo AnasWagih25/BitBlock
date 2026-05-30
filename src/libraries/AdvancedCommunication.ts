@@ -1,8 +1,9 @@
 import { compiler } from "../compiler/assembler";
+import { javascriptGenerator } from "blockly/javascript";
 import { getBoardConfig } from "../boards/registry";
 
 export function defineAdvancedCommunicationBlocks(Blockly: any) {
-  const generator = Blockly.javascriptGenerator || Blockly.JavaScript;
+  const generator = javascriptGenerator as any;
   const asCppString = (expr: string) => {
     if (expr.startsWith("'") && expr.endsWith("'")) {
       return compiler.wrapString(expr.slice(1, -1));

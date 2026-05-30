@@ -234,7 +234,8 @@ export default function TrainingView({ projectId, boardId, task, setTask, select
     }
     const taskKey = task as MLTask;
     if (!TASK_ARCHITECTURES[taskKey]) return;
-    const preset = getAutoMLPreset(taskKey, board);
+    const isArchValid = selectedArch && (TASK_ARCHITECTURES[taskKey] || []).includes(selectedArch);
+    const preset = getAutoMLPreset(taskKey, board, isArchValid ? selectedArch : undefined);
     setAutoNote(preset.note);
     if (preset.architecture && preset.architecture !== selectedArch) {
       setSelectedArch(preset.architecture);
@@ -641,7 +642,6 @@ export default function TrainingView({ projectId, boardId, task, setTask, select
                   <select 
                       value={selectedArch} onChange={(e) => {
                           setSelectedArch(e.target.value);
-                          if (autoOptimize) setAutoOptimize(false);
                       }}
                       disabled={status === 'training'}
                       style={{ 

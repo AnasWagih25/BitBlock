@@ -1,13 +1,14 @@
 import { getBoardConfig } from '../boards/registry';
 
 export class ArduinoCompiler {
-  private includes: Set<string> = new Set();
-  private globals: Set<string> = new Set();
-  private setups: Set<string> = new Set();
-  private loops: Set<string> = new Set();
+  private includes: Map<string, string> = new Map();
+  private globals: Map<string, string> = new Map();
+  private setups: Map<string, string> = new Map();
+  private loops: Map<string, string> = new Map();
   private isAVR: boolean = false;
   public boardId: string = '';
   private memoryUsed: number = 0;
+  private _serialConfigured: boolean = false;
 
   public init(boardId: string) {
     this.includes.clear();
@@ -15,34 +16,57 @@ export class ArduinoCompiler {
     this.setups.clear();
     this.loops.clear();
     this.memoryUsed = 0;
+    this._serialConfigured = false;
     this.boardId = boardId;
     
     const board = getBoardConfig(boardId);
     this.isAVR = !!board.isAVR;
   }
 
-  public addInclude(includeStr: string) {
-    if (!this.includes.has(includeStr)) {
-      this.includes.add(includeStr);
+  public addInclude(includeStr: string, key?: string) {
+    const k = key || includeStr;
+    if (!this.includes.has(k)) {
+      this.includes.set(k, includeStr);
     }
   }
 
-  public addGlobal(globalStr: string) {
-    if (!this.globals.has(globalStr)) {
-      this.globals.add(globalStr);
+  public addGlobal(globalStr: string, key?: string) {
+    const k = key || globalStr;
+    if (!this.globals.has(k)) {
+      this.globals.set(k, globalStr);
     }
   }
 
-  public addSetup(setupStr: string) {
-    if (!this.setups.has(setupStr)) {
-      this.setups.add(setupStr);
+  public addSetup(setupStr: string, key?: string) {
+    const k = key || setupStr;
+    if (!this.setups.has(k)) {
+      this.setups.set(k, setupStr);
     }
   }
 
-  public addLoop(loopStr: string) {
-    if (!this.loops.has(loopStr)) {
-      this.loops.add(loopStr);
+  public addLoop(loopStr: string, key?: string) {
+    const k = key || loopStr;
+    if (!this.loops.has(k)) {
+      this.loops.set(k, loopStr);
     }
+  }
+
+  public emitValue(value: string, type: 'int' | 'float' | 'string' | 'bool'): string {
+    if (value === null || value === undefined) return '';
+    if (type === 'float') {
+      const parsed = parseFloat(value);
+      return isNaN(parsed) ? value : `${parsed.toFixed(1)}f`;
+    }
+    if (type === 'int') {
+      const parsed = parseInt(value, 10);
+      return isNaN(parsed) ? value : `${parsed}`;
+    }
+    return value;
+  }
+
+  /** Signal that Serial has been configured by a block (suppresses default Serial.begin) */
+  public setSerialConfigured() {
+    this._serialConfigured = true;
   }
 
   public wrapString(str: string): string {
@@ -72,33 +96,40 @@ export class ArduinoCompiler {
     finalCode += `#include <Arduino.h>\n`;
     
     // Custom includes
-    this.includes.forEach(inc => {
+    Array.from(this.includes.values()).forEach(inc => {
       finalCode += inc + "\n";
     });
     
     finalCode += "\n";
     
     // Globals
-    this.globals.forEach(g => {
-      finalCode += g + "\n";
+    Array.from(this.globals.values()).forEach(glb => {
+      finalCode += glb + "\n";
     });
     
-    finalCode += "\nvoid setup() {\n  Serial.begin(115200);\n";
+    finalCode += "\n";
     
-    // Initializations
-    this.setups.forEach(s => {
-      finalCode += `  ${s}\n`;
-    });
-    
-    finalCode += "}\n\nvoid loop() {\n";
-    
-    if (mainCode) {
-      finalCode += `  // User Blocks\n${mainCode.split('\n').map(l => l ? '  ' + l : '').join('\n')}\n`;
+    // Setup
+    finalCode += "void setup() {\n";
+    if (!this._serialConfigured && (board.id !== 'arduino-uno-r3' && board.id !== 'arduino-nano')) {
+      finalCode += "  Serial.begin(115200);\n";
+      finalCode += "  delay(100);\n";
+    } else if (!this._serialConfigured && (board.id === 'arduino-uno-r3' || board.id === 'arduino-nano')) {
+      finalCode += "  Serial.begin(9600);\n";
     }
     
-    // Loop background tasks
-    this.loops.forEach(l => {
-      finalCode += `  ${l}\n`;
+    Array.from(this.setups.values()).forEach(setup => {
+      finalCode += "  " + setup.replace(/\n/g, "\n  ") + "\n";
+    });
+    
+    finalCode += "}\n\n";
+    
+    // Loop
+    finalCode += "void loop() {\n";
+    finalCode += "  " + mainCode.replace(/\n/g, "\n  ") + "\n";
+    
+    Array.from(this.loops.values()).forEach(l => {
+      finalCode += "  " + l.replace(/\n/g, "\n  ") + "\n";
     });
     
     finalCode += "}\n";
@@ -106,6 +137,7 @@ export class ArduinoCompiler {
   }
 
   private formatCode(code: string): string {
+    // ── Pass 1: Indentation ──────────────────────────────────────────────
     const INDENT = "  ";
     const lines = code.split("\n");
     let depth = 0;
@@ -125,6 +157,12 @@ export class ArduinoCompiler {
         continue;
       }
 
+      // Keep single-line comments at column 0 only when at top level
+      if (trimmed.startsWith("//") && depth === 0) {
+        formatted.push(trimmed);
+        continue;
+      }
+
       // Dedent lines that start with a closing brace just for printing
       let printDepth = depth;
       if (trimmed.startsWith("}")) {
@@ -139,7 +177,22 @@ export class ArduinoCompiler {
       depth = Math.max(0, depth + openCount - closeCount);
     }
 
-    return formatted.join("\n");
+    // ── Pass 2: Structural blank lines ───────────────────────────────────
+    let result = formatted.join("\n");
+
+    // One blank line after the last #include before non-#include content
+    result = result.replace(/(#include [^\n]+)\n([^#\n])/g, '$1\n\n$2');
+
+    // One blank line between closing brace and a new top-level function/type
+    result = result.replace(/\}\n(void |int |float |bool |char |String |unsigned |long |double |struct |class |enum )/g, '}\n\n$1');
+
+    // Collapse 3+ consecutive blank lines down to one blank line
+    result = result.replace(/\n{3,}/g, '\n\n');
+
+    // Remove trailing whitespace on each line
+    result = result.split('\n').map(l => l.trimEnd()).join('\n');
+
+    return result;
   }
 }
 

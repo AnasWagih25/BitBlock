@@ -1,8 +1,9 @@
 import { compiler } from "../compiler/assembler";
+import { javascriptGenerator } from "blockly/javascript";
 import { getBoardConfig } from "../boards/registry";
 
 export function defineNavigationBlocks(Blockly: any) {
-  const generator = Blockly.javascriptGenerator || Blockly.JavaScript;
+  const generator = javascriptGenerator as any;
 
   // ─── GPS (NEO-6M) ────────────────────────────────────────────────────────
   Blockly.Blocks["gps_init"] = {
@@ -204,10 +205,15 @@ xyzFloat getMpu9250Mag() {
   };
   if (generator) {
     generator.forBlock["gps_distance_between"] = function (block: any) {
-      const lat1 = generator.valueToCode(block, "LAT1", 0) || "0";
-      const lng1 = generator.valueToCode(block, "LNG1", 0) || "0";
-      const lat2 = generator.valueToCode(block, "LAT2", 0) || "0";
-      const lng2 = generator.valueToCode(block, "LNG2", 0) || "0";
+      let lat1 = generator.valueToCode(block, "LAT1", 0) || "0";
+      let lng1 = generator.valueToCode(block, "LNG1", 0) || "0";
+      let lat2 = generator.valueToCode(block, "LAT2", 0) || "0";
+      let lng2 = generator.valueToCode(block, "LNG2", 0) || "0";
+      lat1 = compiler.emitValue(lat1, 'float');
+      lng1 = compiler.emitValue(lng1, 'float');
+      lat2 = compiler.emitValue(lat2, 'float');
+      lng2 = compiler.emitValue(lng2, 'float');
+      compiler.addInclude("#include <TinyGPS++.h>");
       return [`TinyGPSPlus::distanceBetween(${lat1}, ${lng1}, ${lat2}, ${lng2})`, 0];
     };
   }
@@ -225,10 +231,15 @@ xyzFloat getMpu9250Mag() {
   };
   if (generator) {
     generator.forBlock["gps_course_to"] = function (block: any) {
-      const lat1 = generator.valueToCode(block, "LAT1", 0) || "0";
-      const lng1 = generator.valueToCode(block, "LNG1", 0) || "0";
-      const lat2 = generator.valueToCode(block, "LAT2", 0) || "0";
-      const lng2 = generator.valueToCode(block, "LNG2", 0) || "0";
+      let lat1 = generator.valueToCode(block, "LAT1", 0) || "0";
+      let lng1 = generator.valueToCode(block, "LNG1", 0) || "0";
+      let lat2 = generator.valueToCode(block, "LAT2", 0) || "0";
+      let lng2 = generator.valueToCode(block, "LNG2", 0) || "0";
+      lat1 = compiler.emitValue(lat1, 'float');
+      lng1 = compiler.emitValue(lng1, 'float');
+      lat2 = compiler.emitValue(lat2, 'float');
+      lng2 = compiler.emitValue(lng2, 'float');
+      compiler.addInclude("#include <TinyGPS++.h>");
       return [`TinyGPSPlus::courseTo(${lat1}, ${lng1}, ${lat2}, ${lng2})`, 0];
     };
   }

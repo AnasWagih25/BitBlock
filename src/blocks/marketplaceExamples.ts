@@ -79,6 +79,7 @@ export const MARKETPLACE_EXAMPLES: MarketplaceExample[] = [
   <block type="event_loop" x="20" y="180">
     <statement name="DO">
       <block type="controls_if">
+        <mutation else="1"></mutation>
         <value name="IF0">
           <block type="logic_compare">
             <field name="OP">EQ</field>
@@ -88,6 +89,11 @@ export const MARKETPLACE_EXAMPLES: MarketplaceExample[] = [
         </value>
         <statement name="DO0">
           <block type="led_on">
+            <value name="PIN"><block type="math_number"><field name="NUM">13</field></block></value>
+          </block>
+        </statement>
+        <statement name="ELSE">
+          <block type="led_off">
             <value name="PIN"><block type="math_number"><field name="NUM">13</field></block></value>
           </block>
         </statement>
@@ -244,7 +250,7 @@ export const MARKETPLACE_EXAMPLES: MarketplaceExample[] = [
   // ──────────────────────────────────────────────────────────────────────────
   {
     name: "NeoPixel Rainbow",
-    description: "Drives a strip of 12 NeoPixels on pin 5 through a cycling color animation. Sets each pixel to a different hue then shifts continuously.",
+    description: "Drives a strip of 12 NeoPixels on pin 5 through a repeating color sequence — fills all pixels red, then green, then blue with 500ms between each color.",
     category: "Display",
     boardId: "esp32-wroom",
     blocksXml: `<xml xmlns="https://developers.google.com/blockly/xml">
@@ -485,12 +491,18 @@ export const MARKETPLACE_EXAMPLES: MarketplaceExample[] = [
           </block>
         </value>
         <statement name="DO0">
-          <block type="serial_print">
-            <field name="MODE">println</field>
-            <value name="TEXT"><block type="bt_classic_read"></block></value>
+          <block type="variables_set">
+            <field name="VAR">btMsg</field>
+            <value name="VALUE"><block type="bt_classic_read"></block></value>
             <next>
-              <block type="bt_classic_print">
-                <value name="MSG"><block type="bt_classic_read"></block></value>
+              <block type="serial_print">
+                <field name="MODE">println</field>
+                <value name="TEXT"><block type="variables_get"><field name="VAR">btMsg</field></block></value>
+                <next>
+                  <block type="bt_classic_print">
+                    <value name="MSG"><block type="variables_get"><field name="VAR">btMsg</field></block></value>
+                  </block>
+                </next>
               </block>
             </next>
           </block>
