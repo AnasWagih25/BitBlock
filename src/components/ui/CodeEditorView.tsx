@@ -518,15 +518,10 @@ export default function CodeEditorView({
   onToggleSync,
   codeOverridesBlocks,
   onResetToBlocks,
-  onCompile,
-  onFlash,
-  compiling,
   compileStatus,
   compileMessage,
   compileProgress,
   firmwareReady,
-  canCompile,
-  compileBlockReason,
 }: CodeEditorViewProps) {
   const board = getBoardConfig(boardId);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -683,7 +678,6 @@ export default function CodeEditorView({
   const minimapLines = code.split("\n").slice(0, 120);
 
   const lineCount = (code.match(/\n/g) || []).length + 1;
-  const charCount = code.length;
 
   return (
     <div

@@ -54,7 +54,7 @@ export function validateWorkspace(workspace: Blockly.WorkspaceSvg): { errors: st
 
     // 1. Check INPUT_VALUE connections
     for (const input of block.inputList) {
-      if (input.type === Blockly.INPUT_VALUE) {
+      if ((input.type as any) === (Blockly.INPUT_VALUE as any)) {
         // Some inputs are optional, but if it has a 'required' flag (custom property) or is essential for most hardware blocks:
         // By default, if an input value is expected but has no connection, we should warn/error.
         // For hardware blocks, missing PIN inputs are fatal.

@@ -1,5 +1,4 @@
 import * as Blockly from "blockly";
-import * as Ja from "blockly/javascript";
 import { JSDOM } from "jsdom";
 import { validateWorkspace } from "../compiler/validator";
 import { ArduinoCompiler } from "../compiler/assembler";
@@ -23,7 +22,7 @@ defineMotorBlocks(Blockly);
 defineCommunicationBlocks(Blockly);
 defineDisplayBlocks(Blockly);
 
-const compiler = new ArduinoCompiler('arduino-uno-r3');
+const compiler = new ArduinoCompiler();
 
 function runTest(name: string, xmlString: string) {
   console.log(`\\n--- Test: ${name} ---`);
@@ -33,7 +32,7 @@ function runTest(name: string, xmlString: string) {
     Blockly.Xml.domToWorkspace(xml, workspace);
     
     compiler.init('arduino-uno-r3');
-    const { errors } = validateWorkspace(workspace);
+    const { errors } = validateWorkspace(workspace as any);
     
     if (errors.length > 0) {
       console.log("Validation Errors Caught:");

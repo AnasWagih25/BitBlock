@@ -1,7 +1,8 @@
 import { MARKETPLACE_EXAMPLES } from "../blocks/marketplaceExamples";
 import { ArduinoCompiler } from "../compiler/assembler";
 import * as Blockly from "blockly";
-import * as Ja from "blockly/javascript";
+import { defineCoreBlocks } from "../blocks/core";
+import { defineAllLibraryBlocks } from "../libraries";
 
 
 // Mock environment for headless Blockly
@@ -21,11 +22,9 @@ if (!(Blockly as any).javascriptGenerator) {
 
 
 // Initialize blocks
+// Initialize blocks
 defineCoreBlocks(Blockly);
-defineCommunicationBlocks(Blockly);
-defineSensorBlocks(Blockly);
-defineDisplayBlocks(Blockly);
-defineCameraStorageTimeBlocks(Blockly);
+defineAllLibraryBlocks(Blockly);
 
 
 const compiler = new ArduinoCompiler();

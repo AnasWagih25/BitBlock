@@ -357,19 +357,19 @@ export function defineCoreBlocks(Blockly: any) {
     // math_number: ensure it returns just the number
     generator.forBlock['math_number'] = function(block: any) {
       const num = block.getFieldValue('NUM') || '0';
-      return [String(num), generator.ORDER_ATOMIC];
+      return [String(num), (generator as any).ORDER_ATOMIC];
     };
 
     // text: return C++ double-quoted string instead of JS single-quoted
     generator.forBlock['text'] = function(block: any) {
       const text = block.getFieldValue('TEXT') || '';
-      return [compiler.wrapString(text), generator.ORDER_ATOMIC];
+      return [compiler.wrapString(text), (generator as any).ORDER_ATOMIC];
     };
 
     // logic_boolean: true/false works in both JS and C++
     generator.forBlock['logic_boolean'] = function(block: any) {
       const code = block.getFieldValue('BOOL') === 'TRUE' ? 'true' : 'false';
-      return [code, generator.ORDER_ATOMIC];
+      return [code, (generator as any).ORDER_ATOMIC];
     };
 
     // logic_compare: comparison operators
