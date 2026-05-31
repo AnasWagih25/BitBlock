@@ -29,10 +29,10 @@ BitBlock captures real-time data from embedded sensors using high-baud WebSerial
 
 ```mermaid
 graph LR
-    A["Hardware Sensors (IMU/Audio)"] -->|DMA Buffers| B["MCU UART"]
-    B -->|115200 Baud| C["WebSerial API"]
-    C -->|Stream Parsing| D["Browser State / IndexedDB"]
-    D -->|React Canvas| E["Real-Time Plotting"]
+    A[Hardware Sensors (IMU/Audio)] -->|DMA Buffers| B[MCU UART]
+    B -->|115200 Baud| C[WebSerial API]
+    C -->|Stream Parsing| D[Browser State / IndexedDB]
+    D -->|React Canvas| E[Real-Time Plotting]
 ```
 
 ### 2. Digital Signal Processing (DSP) & Feature Extraction
@@ -51,15 +51,15 @@ Once a dataset is labeled and constructed, it is pushed to our cloud training cl
 sequenceDiagram
     participant Frontend
     participant Firebase
-    participant MLWorker as ML Worker (TF/EdgeImpulse)
+    participant ML Worker (TF/EdgeImpulse)
     
     Frontend->>Firebase: Upload Signed JSON Dataset
     Frontend->>Firebase: Create Training Job Request
-    Firebase->>MLWorker: Trigger Cloud Function
-    MLWorker->>MLWorker: Extract DSP Features
-    MLWorker->>MLWorker: Train Neural Network (Epochs)
-    MLWorker->>MLWorker: Post-Training INT8 Quantization
-    MLWorker->>Firebase: Upload Compiled C++ Tensor headers
+    Firebase->>ML Worker: Trigger Cloud Function
+    ML Worker->>ML Worker: Extract DSP Features
+    ML Worker->>ML Worker: Train Neural Network (Epochs)
+    ML Worker->>ML Worker: Post-Training INT8 Quantization
+    ML Worker->>Firebase: Upload Compiled C++ Tensor headers
     Firebase-->>Frontend: Stream Completion Status
 ```
 
