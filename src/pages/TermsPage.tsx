@@ -13,24 +13,9 @@ const sections = [
     content: "You must provide accurate account information and keep your login credentials secure. You are responsible for activity under your account. You may not create accounts for abuse, fraud, or unlawful use.",
   },
   {
-    id: "plans",
-    title: "Subscriptions, Plans, and Limits",
-    content: "BitBlock offers Free, Maker, Pro, and Team plans. Plan features, usage limits, and pricing are displayed in-app and may be updated with notice. Usage limits (e.g., compiles, training jobs, storage, execution time) are enforced to maintain platform reliability and fairness.",
-  },
-  {
-    id: "billing",
-    title: "Billing and Auto-Renewal",
-    content: "Paid subscriptions are billed through our payment provider. By subscribing, you authorize recurring charges until cancellation. Prices shown exclude taxes unless explicitly stated. You are responsible for any applicable taxes and payment-method fees.",
-  },
-  {
-    id: "cancellations",
-    title: "Cancellations and Downgrades",
-    content: "You may cancel at any time from billing settings. Unless required by law, cancellations take effect at the end of the current billing period; no prorated partial-month credits are guaranteed. If you downgrade, higher-tier features and limits may no longer be available.",
-  },
-  {
-    id: "refunds",
-    title: "Refunds",
-    content: "Refunds are handled under our Refund Policy. In case of conflict, the Refund Policy controls refund eligibility and process.",
+    id: "open-source-nature",
+    title: "Free and Open Source",
+    content: "BitBlock is provided as a free and open-source platform. There are no paid subscriptions, billing, or paywalls. Usage limits (e.g., compiles, training jobs, storage, execution time) may still be enforced to maintain platform reliability and fairness for all users.",
   },
   {
     id: "acceptable-use",

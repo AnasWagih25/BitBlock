@@ -1,166 +1,40 @@
-// ── BitBlock Subscription Plans & Limits ──────────────────────
-// Defines the four plan tiers and their resource ceilings.
-// All storage values are in bytes for precision; use formatStorageSize() for display.
+// ── BitBlock Plan & Limits ─────────────────────────────────
+// Open-source model: everyone gets the same default limits.
+// Admins can increase individual user limits via the admin dashboard,
+// stored as `customLimits` on each user's Firestore document.
 
-export type PlanId = 'free' | 'maker' | 'pro' | 'team';
+export type PlanId = 'free';
 
-export interface PlanConfig {
-  id: PlanId;
-  name: string;
-  price: number;               // USD per month (0 for free)
-  priceLabel: string;          // Display string, e.g. "$7/mo"
-  color: string;               // Badge / accent color
-  icon: string;                // Emoji for quick visual identification
-
-  // ── Compilation Limits ──
+export interface PlanLimits {
   compilesPerDay: number;
   compilesPerMonth: number | null;  // null = unlimited (daily cap is the constraint)
-
-  // ── ML Training Limits ──
   trainingJobsPerMonth: number;
   maxJobTimeSeconds: number;
-
-  // ── Storage Limits ──
   datasetStorageBytes: number;
   modelStorageBytes: number;
-
-  // ── Deployment Limits ──
   deployedModels: number;
+}
 
-  // ── Features ──
+export interface PlanConfig extends PlanLimits {
+  id: PlanId;
+  name: string;
+  color: string;
+  icon: string;
   features: string[];
 }
 
+/**
+ * Optional per-user overrides that admins can set.
+ * Any field present here takes precedence over the default plan limits.
+ */
+export type CustomLimits = Partial<PlanLimits>;
+
 const MB = 1024 * 1024;
-const GB = 1024 * MB;
 
-export const PLANS: Record<PlanId, PlanConfig> = {
-  free: {
-    id: 'free',
-    name: 'Free',
-    price: 0,
-    priceLabel: 'Free',
-    color: '#6B7280',
-    icon: '🔧',
-    compilesPerDay: 3,
-    compilesPerMonth: 20,
-    trainingJobsPerMonth: 2,
-    maxJobTimeSeconds: 60,
-    datasetStorageBytes: 15 * MB,
-    modelStorageBytes: 15 * MB,
-    deployedModels: 0,
-    features: [
-      '3 compiles/day',
-      '20 compiles/month',
-      '2 training jobs/month',
-      '60s max job time',
-      '15MB dataset storage',
-      '15MB model storage',
-    ],
-  },
-  maker: {
-    id: 'maker',
-    name: 'Maker',
-    price: 7,
-    priceLabel: '$7/mo',
-    color: '#3B82F6',
-    icon: '⚡',
-    compilesPerDay: 60,
-    compilesPerMonth: null,
-    trainingJobsPerMonth: 12,
-    maxJobTimeSeconds: 10 * 60,
-    datasetStorageBytes: 1 * GB,
-    modelStorageBytes: 150 * MB,
-    deployedModels: 2,
-    features: [
-      '60 compiles/day',
-      '12 training jobs/month',
-      '10 min max job time',
-      '1GB dataset storage',
-      '150MB model storage',
-      '2 deployed models',
-    ],
-  },
-  pro: {
-    id: 'pro',
-    name: 'Pro',
-    price: 15,
-    priceLabel: '$15/mo',
-    color: '#9D27DE',
-    icon: '🚀',
-    compilesPerDay: 120,
-    compilesPerMonth: null,
-    trainingJobsPerMonth: 30,
-    maxJobTimeSeconds: 30 * 60,
-    datasetStorageBytes: 8 * GB,
-    modelStorageBytes: 800 * MB,
-    deployedModels: 8,
-    features: [
-      '120 compiles/day',
-      '30 training jobs/month',
-      '30 min max job time',
-      '8GB dataset storage',
-      '800MB model storage',
-      '8 deployed models',
-    ],
-  },
-  team: {
-    id: 'team',
-    name: 'Team',
-    price: 28,
-    priceLabel: '$28/seat',
-    color: '#F59E0B',
-    icon: '👥',
-    compilesPerDay: 200,
-    compilesPerMonth: null,
-    trainingJobsPerMonth: 40,
-    maxJobTimeSeconds: 45 * 60,
-    datasetStorageBytes: 15 * GB,
-    modelStorageBytes: 3 * GB,
-    deployedModels: 20,
-    features: [
-      '200 compiles/day',
-      '40 training jobs/month',
-      '45 min max job time',
-      '15GB dataset storage (shared)',
-      '3GB model storage (shared)',
-      '20 deployed models (shared)',
-    ],
-  },
-};
-
-export const PLAN_ORDER: PlanId[] = ['free', 'maker', 'pro', 'team'];
-
-export function getPlanConfig(planId: string | undefined | null): PlanConfig {
-  const id = (planId || 'free') as PlanId;
-  return PLANS[id] || PLANS.free;
-}
-
-export function formatStorageSize(bytes: number): string {
-  if (bytes >= GB) return `${(bytes / GB).toFixed(bytes % GB === 0 ? 0 : 1)}GB`;
-  if (bytes >= MB) return `${(bytes / MB).toFixed(bytes % MB === 0 ? 0 : 1)}MB`;
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)}KB`;
-  return `${bytes}B`;
-}
-
-export function formatJobTime(seconds: number): string {
-  if (seconds >= 60) return `${Math.floor(seconds / 60)} min`;
-  return `${seconds}s`;
-}
-
-export function getSuggestedUpgradePlan(current: PlanId): PlanId | null {
-  if (current === "free") return "maker";
-  if (current === "maker") return "pro";
-  return null; // never suggest team via upsell banner
-}
-
-// ── Beta Mode Plan (doubled free-tier limits) ──────────────
-export const BETA_PLAN: PlanConfig = {
+export const DEFAULT_PLAN: PlanConfig = {
   id: 'free',
-  name: 'Beta Tester',
-  price: 0,
-  priceLabel: 'Free (Beta)',
-  color: '#F59E0B',
+  name: 'Open Source',
+  color: '#9D27DE',
   icon: '🧪',
   compilesPerDay: 6,
   compilesPerMonth: 40,
@@ -180,12 +54,51 @@ export const BETA_PLAN: PlanConfig = {
   ],
 };
 
+// Keep backward compatibility — getPlanConfig always returns the default plan
+export function getPlanConfig(_planId?: string | null): PlanConfig {
+  return DEFAULT_PLAN;
+}
+
 /**
- * Returns the effective plan config. When beta mode is active,
- * free-tier users get the doubled BETA_PLAN limits instead.
+ * Returns the effective plan config with custom limit overrides applied.
+ * Admins can set per-user overrides via the admin dashboard.
  */
-export function getBetaPlanConfig(planId: string | undefined | null, isBeta: boolean): PlanConfig {
-  const id = (planId || 'free') as PlanId;
-  if (isBeta && id === 'free') return BETA_PLAN;
-  return PLANS[id] || PLANS.free;
+export function getEffectivePlan(customLimits?: CustomLimits | null): PlanConfig {
+  if (!customLimits) return DEFAULT_PLAN;
+
+  const merged = { ...DEFAULT_PLAN };
+  if (customLimits.compilesPerDay != null) merged.compilesPerDay = customLimits.compilesPerDay;
+  if (customLimits.compilesPerMonth !== undefined) merged.compilesPerMonth = customLimits.compilesPerMonth;
+  if (customLimits.trainingJobsPerMonth != null) merged.trainingJobsPerMonth = customLimits.trainingJobsPerMonth;
+  if (customLimits.maxJobTimeSeconds != null) merged.maxJobTimeSeconds = customLimits.maxJobTimeSeconds;
+  if (customLimits.datasetStorageBytes != null) merged.datasetStorageBytes = customLimits.datasetStorageBytes;
+  if (customLimits.modelStorageBytes != null) merged.modelStorageBytes = customLimits.modelStorageBytes;
+  if (customLimits.deployedModels != null) merged.deployedModels = customLimits.deployedModels;
+
+  // Regenerate features list from merged values
+  merged.features = [
+    `${merged.compilesPerDay} compiles/day`,
+    merged.compilesPerMonth != null ? `${merged.compilesPerMonth} compiles/month` : 'Unlimited compiles/month',
+    `${merged.trainingJobsPerMonth} training jobs/month`,
+    `${formatJobTime(merged.maxJobTimeSeconds)} max job time`,
+    `${formatStorageSize(merged.datasetStorageBytes)} dataset storage`,
+    `${formatStorageSize(merged.modelStorageBytes)} model storage`,
+    `${merged.deployedModels} deployed model${merged.deployedModels !== 1 ? 's' : ''}`,
+  ];
+
+  return merged;
+}
+
+const GB = 1024 * MB;
+
+export function formatStorageSize(bytes: number): string {
+  if (bytes >= GB) return `${(bytes / GB).toFixed(bytes % GB === 0 ? 0 : 1)}GB`;
+  if (bytes >= MB) return `${(bytes / MB).toFixed(bytes % MB === 0 ? 0 : 1)}MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)}KB`;
+  return `${bytes}B`;
+}
+
+export function formatJobTime(seconds: number): string {
+  if (seconds >= 60) return `${Math.floor(seconds / 60)} min`;
+  return `${seconds}s`;
 }

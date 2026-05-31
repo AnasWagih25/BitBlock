@@ -1,7 +1,6 @@
 import { Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useUsage } from "../hooks/useUsage";
-import { PLANS, getSuggestedUpgradePlan } from "../lib/plans";
 import { Zap, ArrowUpRight } from "lucide-react";
 
 export default function PlanLimitBanner({
@@ -11,12 +10,10 @@ export default function PlanLimitBanner({
   fullBleed?: boolean;
   squareTop?: boolean;
 }) {
-  const { user, userPlan, isBetaMode } = useAuth();
-  const { canCompile, canStartTraining, compileBlockReason, trainingBlockReason } = useUsage(user?.uid, userPlan, isBetaMode);
+  const { user, customLimits } = useAuth();
+  const { canCompile, canStartTraining, compileBlockReason, trainingBlockReason } = useUsage(user?.uid, customLimits);
 
   if (!user || (canCompile && canStartTraining)) return null;
-  const current = (userPlan || "free") as keyof typeof PLANS;
-  const suggested = getSuggestedUpgradePlan(current);
 
   const reasons = [!canCompile ? compileBlockReason : null, !canStartTraining ? trainingBlockReason : null]
     .filter(Boolean) as string[];
@@ -65,12 +62,12 @@ export default function PlanLimitBanner({
           <Zap size={14} color="#FDE68A" />
         </span>
         <span style={{ lineHeight: 1.4, whiteSpace: "normal", wordBreak: "normal", overflowWrap: "anywhere", fontWeight: 500 }}>
-          {reasonText || "Plan usage limit reached."}
+          {reasonText || "Usage limit reached."}
         </span>
       </span>
 
       <Link
-        to={isBetaMode ? "/profile" : "/billing"}
+        to="/profile"
         className="btn-primary"
         style={{
           fontSize: 11,
@@ -84,7 +81,7 @@ export default function PlanLimitBanner({
           boxShadow: "0 4px 16px rgba(157,39,222,0.3)",
         }}
       >
-        {isBetaMode ? "View Quotas" : (suggested ? `Upgrade to ${PLANS[suggested].name}` : "Manage billing")}
+        View Quotas
         <ArrowUpRight size={12} />
       </Link>
 

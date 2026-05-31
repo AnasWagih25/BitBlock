@@ -2,10 +2,9 @@ import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import CassetteMascot from "../../components/ui/CassetteMascot";
-import { PLAN_ORDER, PLANS, type PlanId } from "../../lib/plans";
 
 export default function SignUpPage() {
-  const { signUp, signInWithGoogle, isBetaMode } = useAuth();
+  const { signUp, signInWithGoogle } = useAuth();
   const navigate = useNavigate();
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
@@ -13,10 +12,6 @@ export default function SignUpPage() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState("");
-  const [selectedPlan, setSelectedPlan] = useState<PlanId>(() => {
-    const stored = (localStorage.getItem("signup_plan") || "free") as PlanId;
-    return PLAN_ORDER.includes(stored) ? stored : "free";
-  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,8 +19,7 @@ export default function SignUpPage() {
     if (password.length < 8) { setError("Password must be at least 8 characters."); return; }
     setLoading(true);
     try {
-      await signUp(email, password, displayName, selectedPlan);
-      localStorage.removeItem("signup_plan");
+      await signUp(email, password, displayName);
       navigate("/dashboard");
     } catch (err: any) {
       setError(friendlyError(err.code));
@@ -38,8 +32,7 @@ export default function SignUpPage() {
     setError("");
     setGoogleLoading(true);
     try {
-      await signInWithGoogle(selectedPlan);
-      localStorage.removeItem("signup_plan");
+      await signInWithGoogle();
       navigate("/dashboard");
     } catch (err: any) {
       setError(friendlyError(err.code));
@@ -88,9 +81,9 @@ export default function SignUpPage() {
         </p>
         <div style={{ marginTop: 32, display: "flex", flexDirection: "column", gap: 10 }}>
           {[
-            "✓ Start free by default",
-            ...(!isBetaMode ? ["✓ Upgrade anytime"] : []),
-            "✓ Community marketplace access"
+            "✓ 100% free & open source",
+            "✓ Community marketplace access",
+            "✓ Cloud compilation included"
           ].map((t) => (
             <p key={t} style={{ fontSize: 13, color: "rgba(242,242,240,0.5)" }}>{t}</p>
           ))}
@@ -198,39 +191,6 @@ export default function SignUpPage() {
                 </div>
               )}
             </div>
-            {!isBetaMode && (
-              <div>
-                <label style={{ fontSize: 13, color: "rgba(242,242,240,0.6)", display: "block", marginBottom: 8 }}>Choose Plan</label>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                  {PLAN_ORDER.map((id) => {
-                    const p = PLANS[id];
-                    const active = selectedPlan === id;
-                    return (
-                      <button
-                        key={id}
-                        type="button"
-                        onClick={() => setSelectedPlan(id)}
-                        style={{
-                          border: active ? `1px solid ${p.color}` : "1px solid rgba(255,255,255,0.12)",
-                          background: active ? `${p.color}22` : "rgba(255,255,255,0.03)",
-                          color: "#F2F2F0",
-                          borderRadius: 10,
-                          padding: "8px 10px",
-                          textAlign: "left",
-                          cursor: "pointer",
-                        }}
-                      >
-                        <div style={{ fontSize: 12, fontWeight: 700 }}>{p.name}</div>
-                        <div style={{ fontSize: 11, color: "rgba(242,242,240,0.6)" }}>{p.priceLabel}</div>
-                      </button>
-                    );
-                  })}
-                </div>
-                <p style={{ marginTop: 8, fontSize: 11, color: "rgba(242,242,240,0.35)" }}>
-                  Default is Free if you don&apos;t choose another plan.
-                </p>
-              </div>
-            )}
             <p style={{ fontSize: 11, color: "rgba(242,242,240,0.3)", lineHeight: 1.5 }}>
               By creating an account you agree to our{" "}
               <Link to="/terms" style={{ color: "#9D27DE", textDecoration: "none" }}>Terms of Service</Link>,{" "}

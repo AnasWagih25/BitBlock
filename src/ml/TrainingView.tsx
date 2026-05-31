@@ -8,7 +8,7 @@ import { auth } from "../lib/firebase";
 import { collection, addDoc, getDocs, serverTimestamp, doc, onSnapshot, updateDoc } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useAppDialog } from "../contexts/DialogContext";
-import { useAuth } from "../contexts/AuthContext";
+
 
 interface TrainingMetrics {
   val_loss?: number;
@@ -134,7 +134,7 @@ export default function TrainingView({ projectId, boardId, task, setTask, select
   trainingBlockReason?: string | null;
   incrementTrainingCount?: () => Promise<void>;
 }) {
-  const { isBetaMode } = useAuth();
+
   const { alert } = useAppDialog();
   const [status, setStatus] = useState<"idle"|"loading_data"|"training"|"converting"|"uploading"|"done">("idle");
   const [loss, setLoss] = useState(1.0);
@@ -471,7 +471,7 @@ export default function TrainingView({ projectId, boardId, task, setTask, select
 
      // ── Plan limit check ──
      if (canStartTraining === false) {
-       await alert(trainingBlockReason || (isBetaMode ? "Training limit reached for today." : "Training limit reached. Upgrade your plan for more training jobs."));
+       await alert(trainingBlockReason || "Training limit reached. Resets next month.");
        return;
      }
 
@@ -1047,7 +1047,7 @@ export default function TrainingView({ projectId, boardId, task, setTask, select
                {canStartTraining === false && (
                  <div style={{ marginBottom: 10, padding: "8px 10px", borderRadius: 8, border: "1px solid rgba(245,158,11,0.35)", background: "rgba(245,158,11,0.09)", color: "#FDE68A", fontSize: 11, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
                    <span>{trainingBlockReason || "Training plan limit reached."}</span>
-                   <Link to={isBetaMode ? "/profile" : "/billing"} className="btn-ghost" style={{ fontSize: 10, padding: "4px 8px", color: "#F59E0B" }}>{isBetaMode ? "Check Quotas" : "Upgrade"}</Link>
+                   <Link to="/profile" className="btn-ghost" style={{ fontSize: 10, padding: "4px 8px", color: "#F59E0B" }}>Check Quotas</Link>
                  </div>
                )}
                <button 

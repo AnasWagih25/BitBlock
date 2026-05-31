@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { getBetaPlanConfig } from '../lib/plans';
-import type { PlanId } from '../lib/plans';
+import { getEffectivePlan } from '../lib/plans';
+import type { CustomLimits } from '../lib/plans';
 
 interface UsageData {
   compilesToday: number;
@@ -47,10 +47,10 @@ function normalizeUsage(raw: UsageData): UsageData {
   };
 }
 
-export function useUsage(uid: string | undefined, planId: PlanId | string | undefined, isBetaMode: boolean = false) {
+export function useUsage(uid: string | undefined, customLimits?: CustomLimits | null) {
   const [usage, setUsage] = useState<UsageData>(emptyUsage);
   const [loading, setLoading] = useState(true);
-  const plan = getBetaPlanConfig(planId, isBetaMode);
+  const plan = getEffectivePlan(customLimits);
 
   // Real-time listener on usage doc
   useEffect(() => {
@@ -89,8 +89,8 @@ export function useUsage(uid: string | undefined, planId: PlanId | string | unde
 
   const compileBlockReason = !canCompile
     ? remainingCompilesToday <= 0
-      ? `Daily compile limit reached (${plan.compilesPerDay}/day on ${plan.name}). Resets tomorrow.`
-      : `Monthly compile limit reached (${plan.compilesPerMonth}/month on ${plan.name}). Resets next month.`
+      ? `Daily compile limit reached (${plan.compilesPerDay}/day). Resets tomorrow.`
+      : `Monthly compile limit reached (${plan.compilesPerMonth}/month). Resets next month.`
     : null;
 
   // ── Training Checks ──
@@ -98,7 +98,7 @@ export function useUsage(uid: string | undefined, planId: PlanId | string | unde
   const canStartTraining = remainingTrainingJobs > 0;
 
   const trainingBlockReason = !canStartTraining
-    ? `Monthly training limit reached (${plan.trainingJobsPerMonth}/month on ${plan.name}). Resets next month.`
+    ? `Monthly training limit reached (${plan.trainingJobsPerMonth}/month). Resets next month.`
     : null;
 
   // ── Increment Functions ──

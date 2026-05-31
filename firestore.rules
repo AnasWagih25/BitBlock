@@ -26,30 +26,23 @@ service cloud.firestore {
       return field is timestamp;
     }
 
-    function isValidPlan(plan) {
-      return plan in ['free', 'maker', 'pro', 'team'];
-    }
-
-    function userPlan(uid) {
-      return get(/databases/$(database)/documents/users/$(uid)).data.get('plan', 'free');
+    function customLimits(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data.get('customLimits', {});
     }
 
     function compileDailyLimit(uid) {
-      return userPlan(uid) == 'team' ? 200
-        : userPlan(uid) == 'pro' ? 120
-        : userPlan(uid) == 'maker' ? 60
-        : 3;
+      let custom = customLimits(uid).get('compilesPerDay', null);
+      return custom != null ? custom : 6;
     }
 
     function compileMonthlyLimit(uid) {
-      return userPlan(uid) == 'free' ? 20 : -1; // -1 means unlimited
+      let custom = customLimits(uid).get('compilesPerMonth', null);
+      return custom != null ? custom : 40;
     }
 
     function trainingMonthlyLimit(uid) {
-      return userPlan(uid) == 'team' ? 40
-        : userPlan(uid) == 'pro' ? 30
-        : userPlan(uid) == 'maker' ? 12
-        : 2;
+      let custom = customLimits(uid).get('trainingJobsPerMonth', null);
+      return custom != null ? custom : 4;
     }
 
     function usageRef(uid) {

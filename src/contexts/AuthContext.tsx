@@ -9,20 +9,19 @@ import {
   updateProfile,
   sendPasswordResetEmail,
 } from "firebase/auth";
-import { doc, setDoc, getDoc, getDocFromServer, serverTimestamp, onSnapshot } from "firebase/firestore";
+import { doc, setDoc, getDoc, getDocFromServer, serverTimestamp } from "firebase/firestore";
 import { auth, db, googleProvider } from "../lib/firebase";
-import type { PlanId } from "../lib/plans";
+import type { CustomLimits } from "../lib/plans";
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  userPlan: PlanId;
   userRole: string;
   isAdmin: boolean;
-  isBetaMode: boolean;
-  signUp: (email: string, password: string, displayName: string, planId?: PlanId) => Promise<void>;
+  customLimits: CustomLimits | null;
+  signUp: (email: string, password: string, displayName: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
-  signInWithGoogle: (planId?: PlanId) => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   updateUserProfile: (updates: { displayName?: string; photoURL?: string }) => Promise<void>;
@@ -34,30 +33,19 @@ const AuthContext = createContext<AuthContextType | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [userPlan, setUserPlan] = useState<PlanId>('free');
   const [userRole, setUserRole] = useState<string>('user');
-  const [isBetaMode, setIsBetaMode] = useState(false);
+  const [customLimits, setCustomLimits] = useState<CustomLimits | null>(null);
   const authReadSeq = useRef(0);
 
   const isAdmin = userRole === 'admin';
-
-  // Listen to global platform config for beta mode
-  useEffect(() => {
-    const unsub = onSnapshot(doc(db, "config", "platform"), (snap) => {
-      if (snap.exists()) {
-        setIsBetaMode(snap.data().betaMode === true);
-      }
-    }, () => { /* ignore errors for non-existent doc */ });
-    return () => unsub();
-  }, []);
 
   const fetchUserMeta = async (uid: string) => {
     try {
       const snap = await getDoc(doc(db, "users", uid));
       if (snap.exists()) {
         const data = snap.data();
-        setUserPlan((data.plan as PlanId) || 'free');
         setUserRole(data.role || 'user');
+        setCustomLimits(data.customLimits || null);
         return data;
       }
     } catch {
@@ -78,8 +66,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const dbName = data?.displayName ?? null;
           const dbPhoto = data?.photoURL ?? null;
           if (data) {
-            setUserPlan((data.plan as PlanId) || 'free');
             setUserRole(data.role || 'user');
+            setCustomLimits(data.customLimits || null);
           }
           setUser({ uid: u.uid, email: u.email, displayName: dbName || u.displayName, photoURL: dbPhoto || u.photoURL } as User);
           setLoading(false);
@@ -91,8 +79,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         if (!active || seq !== authReadSeq.current) return;
         setUser(null);
-        setUserPlan('free');
         setUserRole('user');
+        setCustomLimits(null);
         setLoading(false);
       }
     });
@@ -102,7 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const createUserDoc = async (u: User, planId: PlanId = "free") => {
+  const createUserDoc = async (u: User) => {
     const ref = doc(db, "users", u.uid);
     const snap = await getDoc(ref);
     if (!snap.exists()) {
@@ -115,25 +103,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         projectCount: 0,
         publishedBlocks: 0,
         role: "user",
-        plan: planId,
+        plan: "free",
         planStartedAt: serverTimestamp(),
       });
     }
   };
 
-  const signUp = async (email: string, password: string, displayName: string, planId: PlanId = "free") => {
+  const signUp = async (email: string, password: string, displayName: string) => {
     const cred = await createUserWithEmailAndPassword(auth, email, password);
     await updateProfile(cred.user, { displayName });
-    await createUserDoc(cred.user, planId);
+    await createUserDoc(cred.user);
   };
 
   const signIn = async (email: string, password: string) => {
     await signInWithEmailAndPassword(auth, email, password);
   };
 
-  const signInWithGoogle = async (planId: PlanId = "free") => {
+  const signInWithGoogle = async () => {
     const cred = await signInWithPopup(auth, googleProvider);
-    await createUserDoc(cred.user, planId);
+    await createUserDoc(cred.user);
   };
 
   const signOut = async () => {
@@ -160,7 +148,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, userPlan, userRole, isAdmin, isBetaMode, signUp, signIn, signInWithGoogle, signOut, resetPassword, updateUserProfile, refreshUserMeta }}>
+    <AuthContext.Provider value={{ user, loading, userRole, isAdmin, customLimits, signUp, signIn, signInWithGoogle, signOut, resetPassword, updateUserProfile, refreshUserMeta }}>
       {children}
     </AuthContext.Provider>
   );

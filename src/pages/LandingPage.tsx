@@ -1,5 +1,4 @@
 import { Link } from "react-router-dom";
-import { useAuth } from "../contexts/AuthContext";
 import { Zap, Puzzle, CloudLightning, Usb, Cpu, Globe, CheckCircle2, ChevronRight } from "lucide-react";
 import MobileMenuButton from "../components/ui/MobileMenuButton";
 
@@ -37,7 +36,7 @@ const features = [
 ];
 
 export default function LandingPage() {
-  const { isBetaMode } = useAuth();
+
   
   return (
     <div data-page="landing" style={{ background: "#0A0A0A", minHeight: "100vh", fontFamily: "Space Grotesk, sans-serif" }}>
@@ -57,11 +56,10 @@ export default function LandingPage() {
           <MobileMenuButton targetId="landing-nav-links" />
         </div>
         <div id="landing-nav-links" className="nav-links" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {!isBetaMode && <Link to="/pricing" className="btn-ghost">Pricing</Link>}
+          <Link to="/pricing" className="btn-ghost">Pricing</Link>
+          <div className="nav-divider" />
           <Link to="/login" className="btn-ghost">Log In</Link>
-          <Link to="/signup" className="btn-primary" style={{ padding: "9px 22px", fontSize: 13 }}>
-            {isBetaMode ? "Join the Beta" : "Get Started Free"}
-          </Link>
+          <Link to="/signup" className="btn-primary">Get Started Free</Link>
         </div>
       </nav>
 
@@ -109,7 +107,7 @@ export default function LandingPage() {
           </p>
           <div className="hero-cta animate-slide-up" style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap", animationDelay: "0.3s" }}>
             <Link to="/signup" className="btn-primary" style={{ fontSize: 16, padding: "16px 36px" }}>
-              {isBetaMode ? "Start Building for Free" : "Start Building Free"}
+              Start Building for Free
             </Link>
           </div>
           <p className="animate-slide-up" style={{ marginTop: 16, fontSize: 13, color: "rgba(242,242,240,0.4)", animationDelay: "0.4s" }}>
@@ -407,7 +405,7 @@ export default function LandingPage() {
             </p>
             <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
               <Link to="/signup" className="btn-primary" style={{ fontSize: 18, padding: "16px 40px" }}>
-                {isBetaMode ? "Create Free Account" : "Start Building for Free"} <ChevronRight size={20} />
+                Start Building for Free <ChevronRight size={20} />
               </Link>
             </div>
           </div>

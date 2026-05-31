@@ -12,10 +12,9 @@ const sections = [
     title: "Information We Collect",
     content: (
       <>
-        <strong>Account data:</strong> email, display name, profile photo, plan, role, usage counters.<br />
+        <strong>Account data:</strong> email, display name, profile photo, role, usage counters.<br />
         <strong>Project data:</strong> code/blocks, project metadata, model artifacts, datasets you upload.<br />
         <strong>Operational data:</strong> logs, error traces, request metadata needed for security and abuse prevention.<br />
-        <strong>Billing data:</strong> subscription status and payment references from our payment processor (we do not store raw card numbers).<br />
         <strong>Device data:</strong> browser type, operating system, screen resolution, and IP address collected automatically for security and analytics.
       </>
     ),
@@ -43,7 +42,7 @@ const sections = [
   {
     id: "retention",
     title: "Data Retention",
-    content: "We keep account and billing records while your account is active and for a limited period afterward as required for security, accounting, fraud prevention, and legal compliance. Project data is deleted upon account deletion unless required by law.",
+    content: "We keep account records while your account is active and for a limited period afterward as required for security, fraud prevention, and legal compliance. Project data is deleted upon account deletion unless required by law.",
   },
   {
     id: "your-rights",

@@ -1,28 +1,32 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { collection, getDocs, doc, updateDoc, serverTimestamp, getDoc, setDoc } from "firebase/firestore";
+import { collection, getDocs, doc, updateDoc, getDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { useAuth } from "../contexts/AuthContext";
-import { PLANS, PLAN_ORDER, getPlanConfig, formatStorageSize, formatJobTime } from "../lib/plans";
-import type { PlanId } from "../lib/plans";
-import { Crown, Users, Zap, Shield, Search, ChevronDown, X, BarChart3, CreditCard, Activity, Calendar, Clock, Database, Server, FlaskConical } from "lucide-react";
+import { getEffectivePlan, formatStorageSize, formatJobTime } from "../lib/plans";
+import type { CustomLimits } from "../lib/plans";
+import { Crown, Users, Shield, Search, X, Calendar, Database, Server, Settings2, Activity } from "lucide-react";
+import { useAppDialog } from "../contexts/DialogContext";
 
 interface UserRow {
   uid: string; email: string; displayName: string; photoURL?: string;
-  role: string; plan: PlanId; createdAt: any; planStartedAt?: any; planChangedAt?: any;
+  role: string; createdAt: any; customLimits?: CustomLimits;
   projectCount?: number; compilationCount?: number; publishedBlocks?: number;
   usage?: { compilesToday: number; compilesThisMonth: number; trainingJobsThisMonth: number };
 }
 
 export default function AdminPage() {
-  const { user, signOut, isBetaMode } = useAuth();
+  const { user, signOut } = useAuth();
+  const { alert } = useAppDialog();
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [planFilter, setPlanFilter] = useState<string>("all");
   const [selectedUser, setSelectedUser] = useState<UserRow | null>(null);
   const [updating, setUpdating] = useState("");
-  const [togglingBeta, setTogglingBeta] = useState(false);
+
+  // Edit limits state
+  const [isEditingLimits, setIsEditingLimits] = useState(false);
+  const [limitsForm, setLimitsForm] = useState<CustomLimits>({});
 
   useEffect(() => { fetchUsers(); }, []);
 
@@ -38,22 +42,16 @@ export default function AdminPage() {
           const uSnap = await getDoc(doc(db, "users", d.id, "usage", "current"));
           if (uSnap.exists()) { const u = uSnap.data(); usage = { compilesToday: u.compilesToday || 0, compilesThisMonth: u.compilesThisMonth || 0, trainingJobsThisMonth: u.trainingJobsThisMonth || 0 }; }
         } catch {}
-        rows.push({ uid: d.id, email: data.email || "", displayName: data.displayName || "", photoURL: data.photoURL, role: data.role || "user", plan: data.plan || "free", createdAt: data.createdAt, planStartedAt: data.planStartedAt, planChangedAt: data.planChangedAt, projectCount: data.projectCount || 0, compilationCount: data.compilationCount || 0, publishedBlocks: data.publishedBlocks || 0, usage });
+        rows.push({
+          uid: d.id, email: data.email || "", displayName: data.displayName || "", photoURL: data.photoURL,
+          role: data.role || "user", createdAt: data.createdAt, customLimits: data.customLimits,
+          projectCount: data.projectCount || 0, compilationCount: data.compilationCount || 0, publishedBlocks: data.publishedBlocks || 0, usage
+        });
       }
       rows.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
       setUsers(rows);
     } catch (e) { console.error(e); }
     setLoading(false);
-  };
-
-  const changePlan = async (uid: string, newPlan: PlanId) => {
-    setUpdating(uid);
-    try {
-      await updateDoc(doc(db, "users", uid), { plan: newPlan, planChangedAt: serverTimestamp() });
-      setUsers(prev => prev.map(u => u.uid === uid ? { ...u, plan: newPlan } : u));
-      if (selectedUser?.uid === uid) setSelectedUser(prev => prev ? { ...prev, plan: newPlan } : null);
-    } catch (e) { console.error(e); }
-    setUpdating("");
   };
 
   const toggleAdmin = async (uid: string, currentRole: string) => {
@@ -67,17 +65,46 @@ export default function AdminPage() {
     setUpdating("");
   };
 
+  const saveCustomLimits = async () => {
+    if (!selectedUser) return;
+    setUpdating(selectedUser.uid);
+    try {
+      // Clean up form to remove empty string values or NaNs
+      const cleaned: CustomLimits = {};
+      if (limitsForm.compilesPerDay != null && !isNaN(limitsForm.compilesPerDay)) cleaned.compilesPerDay = Number(limitsForm.compilesPerDay);
+      if (limitsForm.compilesPerMonth != null && !isNaN(limitsForm.compilesPerMonth)) cleaned.compilesPerMonth = Number(limitsForm.compilesPerMonth);
+      if (limitsForm.trainingJobsPerMonth != null && !isNaN(limitsForm.trainingJobsPerMonth)) cleaned.trainingJobsPerMonth = Number(limitsForm.trainingJobsPerMonth);
+      if (limitsForm.maxJobTimeSeconds != null && !isNaN(limitsForm.maxJobTimeSeconds)) cleaned.maxJobTimeSeconds = Number(limitsForm.maxJobTimeSeconds);
+      if (limitsForm.datasetStorageBytes != null && !isNaN(limitsForm.datasetStorageBytes)) cleaned.datasetStorageBytes = Number(limitsForm.datasetStorageBytes);
+      if (limitsForm.modelStorageBytes != null && !isNaN(limitsForm.modelStorageBytes)) cleaned.modelStorageBytes = Number(limitsForm.modelStorageBytes);
+      if (limitsForm.deployedModels != null && !isNaN(limitsForm.deployedModels)) cleaned.deployedModels = Number(limitsForm.deployedModels);
+
+      await updateDoc(doc(db, "users", selectedUser.uid), { customLimits: cleaned });
+      
+      setUsers(prev => prev.map(u => u.uid === selectedUser.uid ? { ...u, customLimits: cleaned } : u));
+      setSelectedUser(prev => prev ? { ...prev, customLimits: cleaned } : null);
+      setIsEditingLimits(false);
+      await alert("Custom limits updated successfully.");
+    } catch (e: any) {
+      console.error(e);
+      await alert("Failed to update limits: " + e.message);
+    }
+    setUpdating("");
+  };
+
+  const openLimitsEditor = (u: UserRow) => {
+    setLimitsForm(u.customLimits || {});
+    setIsEditingLimits(true);
+  };
+
   const filtered = users.filter(u => {
-    const matchSearch = !search || u.email.toLowerCase().includes(search.toLowerCase()) || u.displayName.toLowerCase().includes(search.toLowerCase());
-    const matchPlan = planFilter === "all" || u.plan === planFilter;
-    return matchSearch && matchPlan;
+    return !search || u.email.toLowerCase().includes(search.toLowerCase()) || u.displayName.toLowerCase().includes(search.toLowerCase());
   });
 
   const stats = {
     total: users.length,
     admins: users.filter(u => u.role === "admin").length,
-    paid: users.filter(u => u.plan !== "free").length,
-    mrr: users.reduce((s, u) => s + getPlanConfig(u.plan).price, 0),
+    custom: users.filter(u => u.customLimits && Object.keys(u.customLimits).length > 0).length,
   };
 
   const timeAgo = (ts: any) => {
@@ -87,11 +114,6 @@ export default function AdminPage() {
     if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
     if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
     return d.toLocaleDateString();
-  };
-
-  const PlanBadge = ({ plan }: { plan: PlanId }) => {
-    const cfg = getPlanConfig(plan);
-    return <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: `${cfg.color}15`, color: cfg.color, border: `1px solid ${cfg.color}30`, textTransform: "uppercase", letterSpacing: "0.05em" }}>{cfg.icon} {cfg.name}</span>;
   };
 
   const RoleBadge = ({ role }: { role: string }) => (
@@ -146,19 +168,18 @@ export default function AdminPage() {
             ADMIN DASHBOARD
           </h1>
           <p style={{ fontSize: 16, color: "rgba(242,242,240,0.6)", margin: 0, lineHeight: 1.6, maxWidth: 600 }}>
-            Manage users, monitor platform usage, and oversee subscription plans across the entire BitBlock ecosystem.
+            Manage users, monitor platform usage, and configure custom limit overrides.
           </p>
         </div>
       </div>
 
       <div style={{ maxWidth: 1400, margin: "0 auto", padding: "40px" }}>
         {/* KPI Stats Cards */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 20, marginBottom: 40 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20, marginBottom: 40 }}>
           {[
             { label: "Total Users", value: stats.total, icon: <Users size={24} />, color: "#3B82F6" },
             { label: "Platform Admins", value: stats.admins, icon: <Crown size={24} />, color: "#F59E0B" },
-            { label: "Paid Subscribers", value: stats.paid, icon: <CreditCard size={24} />, color: "#22C55E" },
-            { label: "Estimated MRR", value: `$${stats.mrr}`, icon: <BarChart3 size={24} />, color: "#9D27DE" },
+            { label: "Custom Limits Set", value: stats.custom, icon: <Settings2 size={24} />, color: "#9D27DE" },
           ].map(s => (
             <div key={s.label} className="card" style={{ 
               padding: "24px", display: "flex", alignItems: "center", gap: 20,
@@ -190,107 +211,6 @@ export default function AdminPage() {
           ))}
         </div>
 
-        {/* Beta Mode Toggle Card */}
-        <div style={{
-          marginBottom: 40, borderRadius: 20, overflow: "hidden",
-          border: isBetaMode ? "1.5px solid rgba(245,158,11,0.5)" : "1px solid rgba(255,255,255,0.08)",
-          background: isBetaMode
-            ? "linear-gradient(135deg, rgba(245,158,11,0.08) 0%, rgba(16,4,24,0.95) 100%)"
-            : "linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(16,4,24,0.95) 100%)",
-          boxShadow: isBetaMode ? "0 16px 40px rgba(245,158,11,0.1)" : "none",
-          transition: "all 0.4s ease",
-        }}>
-          <div style={{ padding: "28px 32px", display: "flex", alignItems: "center", gap: 20 }}>
-            <div style={{
-              width: 56, height: 56, borderRadius: 16, flexShrink: 0,
-              background: isBetaMode ? "rgba(245,158,11,0.15)" : "rgba(255,255,255,0.05)",
-              border: `1px solid ${isBetaMode ? "rgba(245,158,11,0.3)" : "rgba(255,255,255,0.1)"}`,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              transition: "all 0.3s ease",
-            }}>
-              <FlaskConical size={26} color={isBetaMode ? "#F59E0B" : "rgba(242,242,240,0.4)"} />
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-                <h2 style={{ fontSize: 18, fontWeight: 800, color: "#F2F2F0", margin: 0 }}>Beta Mode</h2>
-                <span style={{
-                  fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em",
-                  padding: "3px 10px", borderRadius: 999,
-                  background: isBetaMode ? "rgba(34,197,94,0.15)" : "rgba(239,68,68,0.1)",
-                  color: isBetaMode ? "#4ade80" : "#f87171",
-                  border: `1px solid ${isBetaMode ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.2)"}`,
-                }}>
-                  {isBetaMode ? "Active" : "Inactive"}
-                </span>
-              </div>
-              <p style={{ fontSize: 13, color: "rgba(242,242,240,0.5)", margin: 0, lineHeight: 1.5 }}>
-                {isBetaMode
-                  ? "All pricing, billing, and subscription features are suppressed. Users get doubled free-tier limits."
-                  : "Enable to suppress all pricing/subscription UI and give everyone doubled free-tier quotas for beta testing."}
-              </p>
-            </div>
-            <button
-              onClick={async () => {
-                setTogglingBeta(true);
-                try {
-                  await setDoc(doc(db, "config", "platform"), { betaMode: !isBetaMode }, { merge: true });
-                } catch (e) { console.error(e); }
-                setTogglingBeta(false);
-              }}
-              disabled={togglingBeta}
-              style={{
-                padding: "12px 28px", fontSize: 14, fontWeight: 700, borderRadius: 12,
-                cursor: togglingBeta ? "wait" : "pointer",
-                border: "none",
-                background: isBetaMode
-                  ? "linear-gradient(135deg, rgba(239,68,68,0.2), rgba(239,68,68,0.1))"
-                  : "linear-gradient(135deg, rgba(245,158,11,0.25), rgba(245,158,11,0.1))",
-                color: isBetaMode ? "#f87171" : "#F59E0B",
-                transition: "all 0.2s ease",
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.02)"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; }}
-            >
-              {togglingBeta ? "Updating..." : isBetaMode ? "Disable Beta" : "Enable Beta"}
-            </button>
-          </div>
-          {isBetaMode && (
-            <div style={{ padding: "12px 32px 16px", borderTop: "1px solid rgba(245,158,11,0.15)", display: "flex", gap: 24, fontSize: 12, color: "rgba(242,242,240,0.45)" }}>
-              <span>• Pricing page shows beta notice</span>
-              <span>• Billing page redirects away</span>
-              <span>• Compile limit: 6/day, 40/mo</span>
-              <span>• Training: 4 jobs/mo, 2 min max</span>
-            </div>
-          )}
-        </div>
-
-        {/* Plan Overview Cards */}
-        <div style={{ marginBottom: 40 }}>
-          <h2 style={{ fontSize: 18, fontWeight: 800, color: "#F2F2F0", marginBottom: 20, display: "flex", alignItems: "center", gap: 10 }}><Zap size={18} color="#F59E0B" /> Plan Distribution</h2>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
-            {PLAN_ORDER.map(pid => {
-              const p = PLANS[pid];
-              const count = users.filter(u => u.plan === pid).length;
-              const percentage = stats.total > 0 ? Math.round((count / stats.total) * 100) : 0;
-              return (
-                <div key={pid} className="card" style={{ padding: "20px", position: "relative", overflow: "hidden", border: `1px solid ${p.color}30` }}>
-                  <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 4, background: `linear-gradient(90deg, ${p.color}, ${p.color}60)` }} />
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
-                    <div>
-                      <span style={{ fontSize: 18, fontWeight: 800, color: p.color, display: "flex", alignItems: "center", gap: 6 }}>{p.icon} {p.name}</span>
-                      <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(242,242,240,0.4)", marginTop: 4, display: "block" }}>{p.priceLabel}</span>
-                    </div>
-                    <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: 20, fontWeight: 800, color: "#F2F2F0", fontFamily: "Superstar, fantasy" }}>{count}</div>
-                      <div style={{ fontSize: 11, color: "rgba(242,242,240,0.4)" }}>users ({percentage}%)</div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
         {/* Filters Toolbar */}
         <div style={{ 
           display: "flex", gap: 16, marginBottom: 24, alignItems: "center", flexWrap: "wrap",
@@ -303,13 +223,6 @@ export default function AdminPage() {
             <Search size={16} style={{ position: "absolute", left: 14, top: 11, color: "rgba(242,242,240,0.4)" }} />
             <input className="input" placeholder="Search by name or email..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: 40, paddingRight: 16, fontSize: 14 }} />
           </div>
-          <div style={{ position: "relative" }}>
-            <select className="input" value={planFilter} onChange={e => setPlanFilter(e.target.value)} style={{ width: 160, cursor: "pointer", appearance: "none", paddingRight: 36, fontSize: 14 }}>
-              <option value="all">All Plans</option>
-              {PLAN_ORDER.map(p => <option key={p} value={p}>{PLANS[p].name}</option>)}
-            </select>
-            <ChevronDown size={14} style={{ position: "absolute", right: 14, top: 12, color: "rgba(242,242,240,0.4)", pointerEvents: "none" }} />
-          </div>
           <div style={{ fontSize: 13, color: "rgba(242,242,240,0.4)", fontWeight: 500, padding: "0 8px" }}>
             Showing {filtered.length} of {users.length}
           </div>
@@ -321,17 +234,19 @@ export default function AdminPage() {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
               <thead>
                 <tr style={{ background: "rgba(157,39,222,0.05)", borderBottom: "1px solid rgba(157,39,222,0.2)" }}>
-                  {["User", "Plan", "Role", "Compiles", "Training", "Joined", "Actions"].map(h => (
+                  {["User", "Role", "Limits", "Compiles", "Training", "Joined"].map(h => (
                     <th key={h} style={{ padding: "16px 20px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "rgba(242,242,240,0.5)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={7} style={{ padding: 60, textAlign: "center", color: "rgba(242,242,240,0.4)", fontSize: 15 }}>Loading user data...</td></tr>
+                  <tr><td colSpan={6} style={{ padding: 60, textAlign: "center", color: "rgba(242,242,240,0.4)", fontSize: 15 }}>Loading user data...</td></tr>
                 ) : filtered.length === 0 ? (
-                  <tr><td colSpan={7} style={{ padding: 60, textAlign: "center", color: "rgba(242,242,240,0.4)", fontSize: 15 }}>No users matched your search</td></tr>
-                ) : filtered.map(u => (
+                  <tr><td colSpan={6} style={{ padding: 60, textAlign: "center", color: "rgba(242,242,240,0.4)", fontSize: 15 }}>No users matched your search</td></tr>
+                ) : filtered.map(u => {
+                  const hasCustom = u.customLimits && Object.keys(u.customLimits).length > 0;
+                  return (
                   <tr key={u.uid} style={{ borderBottom: "1px solid rgba(157,39,222,0.1)", cursor: "pointer", transition: "background 0.2s ease" }} onMouseEnter={e => (e.currentTarget.style.background = "rgba(157,39,222,0.08)")} onMouseLeave={e => (e.currentTarget.style.background = "transparent")} onClick={() => setSelectedUser(u)}>
                     <td style={{ padding: "16px 20px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -339,8 +254,14 @@ export default function AdminPage() {
                         <div><div style={{ fontWeight: 700, color: "#F2F2F0", marginBottom: 2 }}>{u.displayName || "—"}</div><div style={{ fontSize: 12, color: "rgba(242,242,240,0.4)" }}>{u.email}</div></div>
                       </div>
                     </td>
-                    <td style={{ padding: "16px 20px" }}><PlanBadge plan={u.plan} /></td>
                     <td style={{ padding: "16px 20px" }}><RoleBadge role={u.role} /></td>
+                    <td style={{ padding: "16px 20px" }}>
+                      {hasCustom ? (
+                         <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 999, fontSize: 10, fontWeight: 700, background: "rgba(34,197,94,0.15)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.3)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Custom</span>
+                      ) : (
+                         <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 999, fontSize: 10, fontWeight: 700, background: "rgba(242,242,240,0.1)", color: "rgba(242,242,240,0.6)", border: "1px solid rgba(242,242,240,0.2)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Default</span>
+                      )}
+                    </td>
                     <td style={{ padding: "16px 20px", color: "rgba(242,242,240,0.6)", fontSize: 13 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                         <span style={{ color: "#F2F2F0", fontWeight: 700 }}>{u.usage?.compilesToday || 0}</span><span style={{ color: "rgba(242,242,240,0.4)", fontSize: 11 }}>/day</span>
@@ -355,18 +276,8 @@ export default function AdminPage() {
                       </div>
                     </td>
                     <td style={{ padding: "16px 20px", color: "rgba(242,242,240,0.4)", fontSize: 13, fontWeight: 500 }}>{timeAgo(u.createdAt)}</td>
-                    <td style={{ padding: "16px 20px" }} onClick={e => e.stopPropagation()}>
-                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                        <select value={u.plan} onChange={e => changePlan(u.uid, e.target.value as PlanId)} disabled={updating === u.uid} style={{ padding: "6px 12px", fontSize: 12, background: "rgba(255,255,255,0.05)", color: "#F2F2F0", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, cursor: "pointer", outline: "none" }}>
-                          {PLAN_ORDER.map(p => <option key={p} value={p} style={{ background: "#0A0A0A" }}>{PLANS[p].name}</option>)}
-                        </select>
-                        <button onClick={() => toggleAdmin(u.uid, u.role)} disabled={updating === u.uid || u.uid === user?.uid} title={u.uid === user?.uid ? "Can't remove own admin" : u.role === "admin" ? "Remove admin" : "Make admin"} style={{ padding: "6px", background: u.role === "admin" ? "rgba(245,158,11,0.15)" : "rgba(255,255,255,0.05)", color: u.role === "admin" ? "#F59E0B" : "rgba(242,242,240,0.4)", border: `1px solid ${u.role === "admin" ? "rgba(245,158,11,0.3)" : "rgba(255,255,255,0.1)"}`, borderRadius: 8, cursor: u.uid === user?.uid ? "not-allowed" : "pointer", opacity: u.uid === user?.uid ? 0.3 : 1, transition: "all 0.2s ease" }}>
-                          <Crown size={14} />
-                        </button>
-                      </div>
-                    </td>
                   </tr>
-                ))}
+                )})}
               </tbody>
             </table>
           </div>
@@ -376,7 +287,7 @@ export default function AdminPage() {
       {/* User Detail Modal */}
       {selectedUser && (
         <div style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,0.8)", backdropFilter: "blur(12px)", display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => setSelectedUser(null)}>
-          <div className="glass-dark" style={{ borderRadius: 24, padding: 40, width: 600, maxHeight: "90vh", overflowY: "auto", animation: "slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1)", border: "1px solid rgba(157,39,222,0.3)", boxShadow: "0 24px 48px rgba(0,0,0,0.5)" }} onClick={e => e.stopPropagation()}>
+          <div className="glass-dark" style={{ borderRadius: 24, padding: 40, width: 640, maxHeight: "90vh", overflowY: "auto", animation: "slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1)", border: "1px solid rgba(157,39,222,0.3)", boxShadow: "0 24px 48px rgba(0,0,0,0.5)" }} onClick={e => e.stopPropagation()}>
             
             {/* Modal Header */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 32 }}>
@@ -385,72 +296,117 @@ export default function AdminPage() {
                 <div>
                   <h2 style={{ fontSize: 24, fontWeight: 800, color: "#F2F2F0", margin: 0, marginBottom: 4 }}>{selectedUser.displayName || "—"}</h2>
                   <p style={{ fontSize: 14, color: "rgba(242,242,240,0.5)", margin: 0, marginBottom: 12 }}>{selectedUser.email}</p>
-                  <div style={{ display: "flex", gap: 8 }}><PlanBadge plan={selectedUser.plan} /><RoleBadge role={selectedUser.role} /></div>
+                  <div style={{ display: "flex", gap: 8 }}><RoleBadge role={selectedUser.role} /></div>
                 </div>
               </div>
               <button onClick={() => setSelectedUser(null)} style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, cursor: "pointer", color: "rgba(242,242,240,0.6)", padding: 6, transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "#F2F2F0"; }} onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; e.currentTarget.style.color = "rgba(242,242,240,0.6)"; }}><X size={20} /></button>
             </div>
 
-            {/* Lifetime Stats */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 32 }}>
-              {[
-                { label: "Total Projects", value: selectedUser.projectCount || 0, color: "#3B82F6" },
-                { label: "Total Compiles", value: selectedUser.compilationCount || 0, color: "#22C55E" },
-                { label: "Published Blocks", value: selectedUser.publishedBlocks || 0, color: "#9D27DE" },
-              ].map(s => (
-                <div key={s.label} style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 16, padding: "20px 16px", textAlign: "center" }}>
-                  <div style={{ fontSize: 32, fontWeight: 800, color: s.color, fontFamily: "Superstar, fantasy", marginBottom: 4 }}>{s.value}</div>
-                  <div style={{ fontSize: 12, fontWeight: 500, color: "rgba(242,242,240,0.5)" }}>{s.label}</div>
+            {!isEditingLimits ? (
+              <>
+                {/* Lifetime Stats */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 32 }}>
+                  {[
+                    { label: "Total Projects", value: selectedUser.projectCount || 0, color: "#3B82F6" },
+                    { label: "Total Compiles", value: selectedUser.compilationCount || 0, color: "#22C55E" },
+                    { label: "Published Blocks", value: selectedUser.publishedBlocks || 0, color: "#9D27DE" },
+                  ].map(s => (
+                    <div key={s.label} style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 16, padding: "20px 16px", textAlign: "center" }}>
+                      <div style={{ fontSize: 32, fontWeight: 800, color: s.color, fontFamily: "Superstar, fantasy", marginBottom: 4 }}>{s.value}</div>
+                      <div style={{ fontSize: 12, fontWeight: 500, color: "rgba(242,242,240,0.5)" }}>{s.label}</div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
 
-            {/* Current Period Usage */}
-            <h3 style={{ fontSize: 14, fontWeight: 800, color: "#F2F2F0", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}><Activity size={16} color="#F59E0B" /> Current Period Usage</h3>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 32 }}>
-              {[
-                { label: "Compiles Today", value: selectedUser.usage?.compilesToday || 0, max: getPlanConfig(selectedUser.plan).compilesPerDay },
-                { label: "Compiles This Month", value: selectedUser.usage?.compilesThisMonth || 0, max: getPlanConfig(selectedUser.plan).compilesPerMonth || "∞" },
-                { label: "Training Jobs (Mo)", value: selectedUser.usage?.trainingJobsThisMonth || 0, max: getPlanConfig(selectedUser.plan).trainingJobsPerMonth },
-                { label: "Max Job Time", value: formatJobTime(getPlanConfig(selectedUser.plan).maxJobTimeSeconds), max: "" },
-              ].map(s => (
-                <div key={s.label} style={{ background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 12, padding: "16px" }}>
-                  <div style={{ fontSize: 12, color: "rgba(242,242,240,0.4)", fontWeight: 500, marginBottom: 8 }}>{s.label}</div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: "#F2F2F0" }}>{s.value}{s.max !== "" && <span style={{ fontSize: 14, color: "rgba(242,242,240,0.3)", fontWeight: 500 }}> / {s.max}</span>}</div>
+                {/* Current Period Usage */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                  <h3 style={{ fontSize: 14, fontWeight: 800, color: "#F2F2F0", display: "flex", alignItems: "center", gap: 8, margin: 0 }}><Activity size={16} color="#F59E0B" /> Current Period Usage</h3>
                 </div>
-              ))}
-            </div>
+                
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 32 }}>
+                  {[
+                    { label: "Compiles Today", value: selectedUser.usage?.compilesToday || 0, max: getEffectivePlan(selectedUser.customLimits).compilesPerDay },
+                    { label: "Compiles This Month", value: selectedUser.usage?.compilesThisMonth || 0, max: getEffectivePlan(selectedUser.customLimits).compilesPerMonth || "∞" },
+                    { label: "Training Jobs (Mo)", value: selectedUser.usage?.trainingJobsThisMonth || 0, max: getEffectivePlan(selectedUser.customLimits).trainingJobsPerMonth },
+                    { label: "Max Job Time", value: formatJobTime(getEffectivePlan(selectedUser.customLimits).maxJobTimeSeconds), max: "" },
+                  ].map(s => (
+                    <div key={s.label} style={{ background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 12, padding: "16px" }}>
+                      <div style={{ fontSize: 12, color: "rgba(242,242,240,0.4)", fontWeight: 500, marginBottom: 8 }}>{s.label}</div>
+                      <div style={{ fontSize: 20, fontWeight: 800, color: "#F2F2F0" }}>{s.value}{s.max !== "" && <span style={{ fontSize: 14, color: "rgba(242,242,240,0.3)", fontWeight: 500 }}> / {s.max}</span>}</div>
+                    </div>
+                  ))}
+                </div>
 
-            {/* Plan Info */}
-            <h3 style={{ fontSize: 14, fontWeight: 800, color: "#F2F2F0", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}><Database size={16} color="#3B82F6" /> Subscription & Limits</h3>
-            <div style={{ background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 12, padding: "20px", marginBottom: 32 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Calendar size={14} color="rgba(242,242,240,0.4)" /><span style={{ fontSize: 13, color: "rgba(242,242,240,0.5)" }}>Joined:</span> <span style={{ fontSize: 13, color: "#F2F2F0", fontWeight: 600 }}>{selectedUser.createdAt?.toDate?.()?.toLocaleDateString() || "—"}</span></div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Clock size={14} color="rgba(242,242,240,0.4)" /><span style={{ fontSize: 13, color: "rgba(242,242,240,0.5)" }}>Plan start:</span> <span style={{ fontSize: 13, color: "#F2F2F0", fontWeight: 600 }}>{selectedUser.planStartedAt ? (selectedUser.planStartedAt.toDate?.()?.toLocaleDateString() || "—") : "—"}</span></div>
+                {/* Plan Info */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                  <h3 style={{ fontSize: 14, fontWeight: 800, color: "#F2F2F0", display: "flex", alignItems: "center", gap: 8, margin: 0 }}><Database size={16} color="#3B82F6" /> Resource Limits</h3>
+                  <button onClick={() => openLimitsEditor(selectedUser)} className="btn-primary" style={{ padding: "6px 12px", fontSize: 12 }}>Edit Limits</button>
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Database size={14} color="rgba(242,242,240,0.4)" /><span style={{ fontSize: 13, color: "rgba(242,242,240,0.5)" }}>Storage:</span> <span style={{ fontSize: 13, color: "#F2F2F0", fontWeight: 600 }}>{formatStorageSize(getPlanConfig(selectedUser.plan).datasetStorageBytes)} / {formatStorageSize(getPlanConfig(selectedUser.plan).modelStorageBytes)}</span></div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Server size={14} color="rgba(242,242,240,0.4)" /><span style={{ fontSize: 13, color: "rgba(242,242,240,0.5)" }}>Models:</span> <span style={{ fontSize: 13, color: "#F2F2F0", fontWeight: 600 }}>{getPlanConfig(selectedUser.plan).deployedModels} max</span></div>
+                <div style={{ background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 12, padding: "20px", marginBottom: 32 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Calendar size={14} color="rgba(242,242,240,0.4)" /><span style={{ fontSize: 13, color: "rgba(242,242,240,0.5)" }}>Joined:</span> <span style={{ fontSize: 13, color: "#F2F2F0", fontWeight: 600 }}>{selectedUser.createdAt?.toDate?.()?.toLocaleDateString() || "—"}</span></div>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Database size={14} color="rgba(242,242,240,0.4)" /><span style={{ fontSize: 13, color: "rgba(242,242,240,0.5)" }}>Storage:</span> <span style={{ fontSize: 13, color: "#F2F2F0", fontWeight: 600 }}>{formatStorageSize(getEffectivePlan(selectedUser.customLimits).datasetStorageBytes)} / {formatStorageSize(getEffectivePlan(selectedUser.customLimits).modelStorageBytes)}</span></div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Server size={14} color="rgba(242,242,240,0.4)" /><span style={{ fontSize: 13, color: "rgba(242,242,240,0.5)" }}>Models:</span> <span style={{ fontSize: 13, color: "#F2F2F0", fontWeight: 600 }}>{getEffectivePlan(selectedUser.customLimits).deployedModels} max</span></div>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
 
-            {/* Actions */}
-            <div style={{ borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: 24, display: "flex", gap: 16 }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: "rgba(242,242,240,0.5)", marginBottom: 8, display: "block" }}>Change Plan</label>
-                <select value={selectedUser.plan} onChange={e => changePlan(selectedUser.uid, e.target.value as PlanId)} disabled={updating === selectedUser.uid} className="input" style={{ width: "100%", cursor: "pointer", fontSize: 14 }}>
-                  {PLAN_ORDER.map(p => <option key={p} value={p}>{PLANS[p].name} — {PLANS[p].priceLabel}</option>)}
-                </select>
+                {/* Actions */}
+                <div style={{ borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: 24, display: "flex", gap: 16 }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: "rgba(242,242,240,0.5)", marginBottom: 8, display: "block" }}>Manage Role</label>
+                    <button onClick={() => toggleAdmin(selectedUser.uid, selectedUser.role)} disabled={updating === selectedUser.uid || selectedUser.uid === user?.uid} className="btn-secondary" style={{ width: "100%", padding: "12px", fontSize: 14, display: "flex", justifyContent: "center", alignItems: "center", gap: 8 }}>
+                      <Crown size={16} /> {selectedUser.role === "admin" ? "Demote to User" : "Promote to Admin"}
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              /* Custom Limits Editor */
+              <div>
+                 <h3 style={{ fontSize: 16, fontWeight: 800, color: "#F2F2F0", marginBottom: 24, display: "flex", alignItems: "center", gap: 8 }}><Settings2 size={16} color="#9D27DE" /> Custom Quota Overrides</h3>
+                 
+                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 32 }}>
+                    <div>
+                      <label style={{ fontSize: 12, color: "rgba(242,242,240,0.5)", display: "block", marginBottom: 6 }}>Compiles / Day</label>
+                      <input type="number" className="input" placeholder="Default: 6" value={limitsForm.compilesPerDay ?? ""} onChange={e => setLimitsForm(prev => ({...prev, compilesPerDay: e.target.value ? Number(e.target.value) : undefined}))} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 12, color: "rgba(242,242,240,0.5)", display: "block", marginBottom: 6 }}>Compiles / Month</label>
+                      <input type="number" className="input" placeholder="Default: 40" value={limitsForm.compilesPerMonth ?? ""} onChange={e => setLimitsForm(prev => ({...prev, compilesPerMonth: e.target.value ? Number(e.target.value) : undefined}))} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 12, color: "rgba(242,242,240,0.5)", display: "block", marginBottom: 6 }}>Training Jobs / Month</label>
+                      <input type="number" className="input" placeholder="Default: 4" value={limitsForm.trainingJobsPerMonth ?? ""} onChange={e => setLimitsForm(prev => ({...prev, trainingJobsPerMonth: e.target.value ? Number(e.target.value) : undefined}))} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 12, color: "rgba(242,242,240,0.5)", display: "block", marginBottom: 6 }}>Max Job Time (seconds)</label>
+                      <input type="number" className="input" placeholder="Default: 120" value={limitsForm.maxJobTimeSeconds ?? ""} onChange={e => setLimitsForm(prev => ({...prev, maxJobTimeSeconds: e.target.value ? Number(e.target.value) : undefined}))} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 12, color: "rgba(242,242,240,0.5)", display: "block", marginBottom: 6 }}>Dataset Storage (Bytes)</label>
+                      <input type="number" className="input" placeholder="Default: 31457280 (30MB)" value={limitsForm.datasetStorageBytes ?? ""} onChange={e => setLimitsForm(prev => ({...prev, datasetStorageBytes: e.target.value ? Number(e.target.value) : undefined}))} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 12, color: "rgba(242,242,240,0.5)", display: "block", marginBottom: 6 }}>Model Storage (Bytes)</label>
+                      <input type="number" className="input" placeholder="Default: 31457280 (30MB)" value={limitsForm.modelStorageBytes ?? ""} onChange={e => setLimitsForm(prev => ({...prev, modelStorageBytes: e.target.value ? Number(e.target.value) : undefined}))} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 12, color: "rgba(242,242,240,0.5)", display: "block", marginBottom: 6 }}>Deployed Models Limit</label>
+                      <input type="number" className="input" placeholder="Default: 1" value={limitsForm.deployedModels ?? ""} onChange={e => setLimitsForm(prev => ({...prev, deployedModels: e.target.value ? Number(e.target.value) : undefined}))} />
+                    </div>
+                 </div>
+
+                 <div style={{ display: "flex", gap: 12 }}>
+                   <button onClick={() => setIsEditingLimits(false)} className="btn-secondary" style={{ flex: 1 }}>Cancel</button>
+                   <button onClick={() => setLimitsForm({})} className="btn-ghost" style={{ flex: 1, color: "#f87171" }}>Clear Overrides</button>
+                   <button onClick={saveCustomLimits} disabled={updating === selectedUser.uid} className="btn-primary" style={{ flex: 1 }}>{updating === selectedUser.uid ? "Saving..." : "Save Limits"}</button>
+                 </div>
               </div>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: "rgba(242,242,240,0.5)", marginBottom: 8, display: "block" }}>Manage Role</label>
-                <button onClick={() => toggleAdmin(selectedUser.uid, selectedUser.role)} disabled={updating === selectedUser.uid || selectedUser.uid === user?.uid} className="btn-secondary" style={{ width: "100%", padding: "12px", fontSize: 14, display: "flex", justifyContent: "center", alignItems: "center", gap: 8 }}>
-                  <Crown size={16} /> {selectedUser.role === "admin" ? "Demote to User" : "Promote to Admin"}
-                </button>
-              </div>
-            </div>
+            )}
           </div>
         </div>
       )}

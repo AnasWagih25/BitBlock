@@ -7,14 +7,13 @@ import { useAuth } from "../contexts/AuthContext";
 import { useAppDialog } from "../contexts/DialogContext";
 import CassetteMascot from "../components/ui/CassetteMascot";
 import { useUsage } from "../hooks/useUsage";
-import { PLANS, PLAN_ORDER, getSuggestedUpgradePlan } from "../lib/plans";
-import { Edit2, Crown, Wrench, FolderOpen, Puzzle, Camera, Zap, Shield, Globe, ExternalLink, ArrowUpRight } from "lucide-react";
+import { Edit2, Crown, Wrench, FolderOpen, Puzzle, Camera, Shield, Globe, ExternalLink } from "lucide-react";
 import MobileMenuButton from "../components/ui/MobileMenuButton";
 
 export default function ProfilePage() {
-  const { user, signOut, updateUserProfile, userPlan, isAdmin, isBetaMode } = useAuth();
+  const { user, signOut, updateUserProfile, isAdmin, customLimits } = useAuth();
   const { alert } = useAppDialog();
-  const { usage, plan } = useUsage(user?.uid, userPlan, isBetaMode);
+  const { usage, plan } = useUsage(user?.uid, customLimits);
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [displayName, setDisplayName] = useState("");
@@ -100,8 +99,6 @@ export default function ProfilePage() {
   };
 
   const initials = (profile?.displayName || user?.email || "U")[0].toUpperCase();
-  const suggestedPlanId = getSuggestedUpgradePlan((userPlan || "free") as any);
-  const suggestedPlan = suggestedPlanId ? PLANS[suggestedPlanId] : null;
 
   /* ── Progress bar helper ── */
   const UsageBar = ({ label, used, max, color, text }: { label: string; used: number | null; max: number | null; color: string; text?: string }) => {
@@ -139,7 +136,7 @@ export default function ProfilePage() {
           </Link>
           <MobileMenuButton targetId="profile-nav-links" />
           <div id="profile-nav-links" className="nav-links" style={{ display: "flex", gap: 4 }}>
-            {[{ label: "Projects", to: "/dashboard" }, { label: "Marketplace", to: "/marketplace" }, ...(!isBetaMode ? [{ label: "Pricing", to: "/pricing" }] : [])].map((item) => (
+            {[{ label: "Projects", to: "/dashboard" }, { label: "Marketplace", to: "/marketplace" }].map((item) => (
               <Link key={item.label} to={item.to} className="btn-ghost">{item.label}</Link>
             ))}
             {isAdmin && <Link to="/admin" className="btn-ghost" style={{ color: "#F59E0B", display: "flex", alignItems: "center", gap: 4 }}><Shield size={14} /> Admin</Link>}
@@ -192,12 +189,14 @@ export default function ProfilePage() {
                 </h1>
                 <p style={{ fontSize: 14, color: "rgba(242,242,240,0.4)", margin: "4px 0 12px" }}>{user?.email}</p>
                 <div className="profile-badges" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 12px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: `${plan.color}20`, color: plan.color, border: `1px solid ${plan.color}40`, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                    <Zap size={11} /> {plan.name}
-                  </span>
                   {isAdmin && (
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 12px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "rgba(245,158,11,0.15)", color: "#F59E0B", border: "1px solid rgba(245,158,11,0.3)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                       <Crown size={11} /> Admin
+                    </span>
+                  )}
+                  {customLimits && (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 12px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "rgba(34,197,94,0.15)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.3)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                      <Shield size={11} /> Custom Limits
                     </span>
                   )}
                   <span style={{ fontSize: 12, color: "rgba(242,242,240,0.3)" }}>
@@ -235,86 +234,20 @@ export default function ProfilePage() {
               ))}
             </div>
 
-            {/* ── Two-column: Subscription + Usage ── */}
-            <div className="profile-two-col" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 24 }}>
-              {/* Subscription Card */}
-              <div style={{ borderRadius: 16, padding: "24px", border: "1px solid rgba(157,39,222,0.12)", background: "linear-gradient(170deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01))" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-                  <Crown size={18} color="#F59E0B" />
-                  <h2 style={{ fontSize: 15, fontWeight: 700, color: "#F2F2F0", margin: 0 }}>Subscription</h2>
-                  <span style={{ marginLeft: "auto", fontSize: 11, padding: "3px 10px", borderRadius: 999, background: `${plan.color}20`, color: plan.color, border: `1px solid ${plan.color}40`, fontWeight: 700 }}>{plan.name}</span>
-                </div>
-
-                <div style={{ fontSize: 28, fontWeight: 800, color: "#F2F2F0", marginBottom: 4 }}>
-                  {plan.icon} {plan.priceLabel}
-                </div>
-                <div style={{ fontSize: 12, color: "rgba(242,242,240,0.5)", lineHeight: 1.7, marginBottom: 16 }}>
-                  {plan.compilesPerDay} compiles/day · {plan.trainingJobsPerMonth} jobs/mo · {plan.maxJobTimeSeconds >= 60 ? `${Math.floor(plan.maxJobTimeSeconds / 60)} min` : `${plan.maxJobTimeSeconds}s`} max
-                </div>
-
-                {isBetaMode ? (
-                  <>
-                    <div style={{ padding: "12px 14px", borderRadius: 10, background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)", fontSize: 12, color: "rgba(242,242,240,0.65)", lineHeight: 1.6 }}>
-                      🧪 You're on the <strong style={{ color: "#F59E0B" }}>Beta Tester</strong> plan with doubled free-tier limits. Enjoy!
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    {suggestedPlan && (
-                      <div style={{ padding: "12px 14px", borderRadius: 10, background: "rgba(157,39,222,0.08)", border: "1px solid rgba(157,39,222,0.15)", marginBottom: 16, fontSize: 12, color: "rgba(242,242,240,0.65)", lineHeight: 1.6 }}>
-                        ⚡ Upgrade to <strong style={{ color: suggestedPlan.color }}>{suggestedPlan.name}</strong> for {suggestedPlan.compilesPerDay} compiles/day and {suggestedPlan.trainingJobsPerMonth} training jobs/month.
-                      </div>
-                    )}
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <Link to="/billing" className="btn-primary" style={{ fontSize: 12, padding: "8px 16px", flex: 1, justifyContent: "center" }}>
-                        Manage Billing <ArrowUpRight size={12} />
-                      </Link>
-                      <Link to="/pricing" className="btn-secondary" style={{ fontSize: 12, padding: "8px 16px", flex: 1, justifyContent: "center" }}>
-                        Compare Plans
-                      </Link>
-                    </div>
-                  </>
-                )}
+            {/* ── Usage Card ── */}
+            <div style={{ borderRadius: 16, padding: "24px", border: "1px solid rgba(157,39,222,0.12)", background: "linear-gradient(170deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01))", marginBottom: 24 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+                <Shield size={18} color="#9D27DE" />
+                <h2 style={{ fontSize: 15, fontWeight: 700, color: "#F2F2F0", margin: 0 }}>Usage & Limits</h2>
+                <span style={{ marginLeft: "auto", fontSize: 11, padding: "3px 10px", borderRadius: 999, background: `rgba(242,242,240,0.1)`, color: "rgba(242,242,240,0.8)", border: `1px solid rgba(242,242,240,0.2)`, fontWeight: 600 }}>Open Source Free Tier</span>
               </div>
-
-              {/* Usage Card */}
-              <div style={{ borderRadius: 16, padding: "24px", border: "1px solid rgba(157,39,222,0.12)", background: "linear-gradient(170deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01))" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-                  <Shield size={18} color="#9D27DE" />
-                  <h2 style={{ fontSize: 15, fontWeight: 700, color: "#F2F2F0", margin: 0 }}>Usage & Limits</h2>
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  <UsageBar label="Compiles Today" used={usage.compilesToday} max={plan.compilesPerDay} color="#3B82F6" />
-                  <UsageBar label="Compiles This Month" used={usage.compilesThisMonth} max={plan.compilesPerMonth || null} color="#22C55E" />
-                  <UsageBar label="Training Jobs" used={usage.trainingJobsThisMonth} max={plan.trainingJobsPerMonth} color="#9D27DE" />
-                  <UsageBar label="Max Job Time" used={null} max={null} color="#F59E0B" text={plan.maxJobTimeSeconds >= 60 ? `${Math.floor(plan.maxJobTimeSeconds / 60)} min` : `${plan.maxJobTimeSeconds}s`} />
-                </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <UsageBar label="Compiles Today" used={usage.compilesToday} max={plan.compilesPerDay} color="#3B82F6" />
+                <UsageBar label="Compiles This Month" used={usage.compilesThisMonth} max={plan.compilesPerMonth || null} color="#22C55E" />
+                <UsageBar label="Training Jobs" used={usage.trainingJobsThisMonth} max={plan.trainingJobsPerMonth} color="#9D27DE" />
+                <UsageBar label="Max Job Time" used={null} max={null} color="#F59E0B" text={plan.maxJobTimeSeconds >= 60 ? `${Math.floor(plan.maxJobTimeSeconds / 60)} min` : `${plan.maxJobTimeSeconds}s`} />
               </div>
             </div>
-
-            {/* ── Plan Tier Strip (hidden in beta) ── */}
-            {!isBetaMode && (
-            <div className="profile-plan-strip" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 24 }}>
-              {PLAN_ORDER.map((pid) => {
-                const p = PLANS[pid];
-                const active = pid === (userPlan || "free");
-                return (
-                  <div key={pid} style={{
-                    borderRadius: 12, padding: "12px 14px",
-                    border: active ? `1.5px solid ${p.color}` : "1px solid rgba(255,255,255,0.08)",
-                    background: active ? `${p.color}12` : "rgba(255,255,255,0.02)",
-                    transition: "all 0.2s ease",
-                  }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span style={{ fontSize: 13, color: "#F2F2F0", fontWeight: 700 }}>{p.icon} {p.name}</span>
-                      {active && <span style={{ fontSize: 9, color: p.color, fontWeight: 700, textTransform: "uppercase" }}>Current</span>}
-                    </div>
-                    <div style={{ fontSize: 11, color: "rgba(242,242,240,0.45)", marginTop: 4 }}>{p.priceLabel}</div>
-                  </div>
-                );
-              })}
-            </div>
-            )}
 
             {/* ── Profile Settings ── */}
             <div style={{ borderRadius: 16, padding: "28px", border: "1px solid rgba(157,39,222,0.12)", background: "linear-gradient(170deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01))" }}>
