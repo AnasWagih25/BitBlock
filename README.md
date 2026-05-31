@@ -38,9 +38,24 @@ graph LR
 ```
 
 ### 1.2. Digital Signal Processing (DSP) & Feature Extraction
-Prior to neural network ingestion, BitBlock implements high-efficiency, on-device signal processing to reduce data dimensionality.
-- **Time-Series Analysis:** For inertial measurement unit (IMU) data, spectral analysis windows the continuous stream into overlapping segments. It computes spectral power, Root Mean Square (RMS), and signal skewness, thereby distilling multi-axis, high-frequency noise into robust, low-dimensional feature vectors.
-- **Audio Processing (MFCCs & Spectrograms):** For continuous audio streams, Mel-Frequency Cepstral Coefficients (MFCC) algorithms transform raw PCM audio matrices into 2D visual spectrograms. This drastically reduces the dimensionality of the input layer while isolating human-audible frequency bands for efficient convolutional processing.
+Raw sensor streams inherently possess high variance and extreme dimensionality. Feeding this directly into a neural network results in the "Curse of Dimensionality," leading to over-parameterized models that fail to fit on embedded hardware. Thus, BitBlock implements a rigid, deterministic Digital Signal Processing (DSP) frontend prior to neural network ingestion.
+
+**Time-Series Analysis (Kinematic Data):** 
+For continuous $N$-dimensional kinematic data streams (e.g., IMU accelerometry), data is partitioned using sliding overlapping windows. A discrete Fourier transform (DFT) is applied over the windowed sequence $x[n]$, converting the time domain signal to the frequency domain $X[k]$:
+
+$$ X[k] = \sum_{n=0}^{N-1} x[n] \cdot e^{-i 2\pi k n / N} $$
+
+From this, key spectral and statistical features are extracted:
+- **Spectral Power:** $P_x = \frac{1}{N} \sum |X[k]|^2$, identifying dominant vibrational frequencies.
+- **Root Mean Square (RMS):** $x_{rms} = \sqrt{\frac{1}{N} \sum x_n^2}$, capturing the signal's overall energy magnitude.
+
+**Audio Processing (MFCC Pipeline):** 
+For high-bandwidth acoustic telemetry (e.g., 16kHz PCM audio), BitBlock orchestrates a complete Mel-Frequency Cepstral Coefficients (MFCC) pipeline to isolate relevant frequency bands.
+1. **Pre-emphasis & Framing:** The signal is high-pass filtered to balance the frequency spectrum and segmented into overlapping 25ms frames.
+2. **Windowing:** A Hann window function $w[n] = 0.5 \left(1 - \cos\left(\frac{2\pi n}{N-1}\right)\right)$ is applied to minimize spectral leakage at frame boundaries.
+3. **Mel-Filterbank:** Following a Short-Time Fourier Transform (STFT), the power spectrum is mapped onto the Mel scale, mathematically mimicking the non-linear human auditory system: 
+   $$ m = 2595 \cdot \log_{10}\left(1 + \frac{f}{700}\right) $$
+4. **Discrete Cosine Transform (DCT):** A DCT is applied to the log-mel spectrum to decorrelate the filterbank coefficients. This compression yields a dense 2D spectrogram tensor, perfectly sized for deep `Conv2D` ingestion without overflowing MCU memory.
 
 ### 1.3. Cloud-Distributed Neural Network Training
 Following dataset curation and labeling, the pipeline leverages a cloud-distributed training cluster. BitBlock utilizes serverless workers via Firebase/GCP to execute dynamic TensorFlow training topologies asynchronously.
@@ -91,6 +106,14 @@ The quantized FlatBuffer `.tflite` artifact is structurally serialized into a C-
 Instead of utilizing standard `malloc` calls, the pipeline dynamically pre-allocates a static **Tensor Arena** buffer in the MCU's `.bss` or `.data` sections. The size of this arena is heuristically computed during the cloud compilation phase, explicitly tuned to exactly fit the sum of the largest layer activations and intermediate buffers.
 
 Upon user deployment, BitBlock dynamically injects the tensor array into the workspace compiler's Abstract Syntax Tree (AST). The cloud compiler (leveraging GCC for AVR or ESP-IDF for Espressif architectures) statically links the TensorFlow Lite Micro library. The resulting compiled ELF/BIN artifacts are securely streamed to the client browser and flashed to specific memory offsets on the hardware via the WebSerial protocol utilizing `esptool.js` and `stk500` drivers.
+
+### 1.6. Theoretical Superiority of the Edge-ML Paradigm
+
+The architectural choice to compile and execute machine learning models entirely on the edge device—rather than offloading inference to a centralized cloud—is rooted in fundamental theorems of distributed computing physics:
+
+1. **Energy Asymmetry ($E_{compute} \ll E_{tx}$):** The energy required to execute a single MAC (Multiply-Accumulate) instruction on a Cortex-M processor is on the order of picojoules ($10^{-12} \text{ J}$). Conversely, transmitting a single 16-bit float via an RF transceiver (e.g., WiFi or LTE) requires microjoules to millijoules ($10^{-6} \text{ to } 10^{-3} \text{ J}$). Performing localized DSP and TinyML inference consumes exponentially less power than continuously streaming raw telemetry.
+2. **Deterministic Latency:** Cloud inference relies on HTTP/MQTT protocols governed by stochastic network latency and jitter. By executing locally from statically allocated SRAM, model inference achieves hard, deterministic latency bounds (often $<2\text{ms}$ per inference cycle), satisfying real-time constraints required for closed-loop motor control and high-speed robotics.
+3. **Data Sovereignty and Bandwidth:** Embedded sensors generate enormous data volumes (e.g., $16,000 \text{ Hz} \times 16\text{-bit} = 256 \text{ kbps}$ per microphone). BitBlock’s TinyML models process this data ephemerally in RAM, discarding the raw matrix and outputting only the resulting state classification (e.g., `[WAKE_WORD_DETECTED, 0.98]`). This vastly reduces network bandwidth saturation and mathematically preserves data privacy, since raw, unencrypted sensory data never crosses the hardware boundary.
 
 ---
 
