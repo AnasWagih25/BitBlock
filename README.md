@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="docs/images/bitblock_hero.png" alt="BitBlock Hero Banner" width="100%" />
+  <img src="public/demo/image.png" alt="BitBlock Hero Banner" width="100%" />
 </div>
 
 <div align="center">
@@ -21,7 +21,7 @@ By leveraging WebSerial, WebUSB, and cloud-distributed build systems, BitBlock e
 The core technical differentiator of BitBlock is its end-to-end TinyML pipeline. The architecture seamlessly integrates raw sensor data acquisition, digital signal processing (DSP), neural network training, model quantization, and native C++ deployment.
 
 <div align="center">
-  <img src="docs/images/ml_data_viz.png" alt="BitBlock ML Telemetry Dashboard" width="100%" />
+  <img src="public/demo/ide_overview.png" alt="BitBlock ML Telemetry Dashboard" width="100%" />
 </div>
 
 ### 1. High-Speed Data Ingestion (WebSerial + DMA)
@@ -29,10 +29,10 @@ BitBlock captures real-time data from embedded sensors using high-baud WebSerial
 
 ```mermaid
 graph LR
-    A[Hardware Sensors (IMU/Audio)] -->|DMA Buffers| B[MCU UART]
-    B -->|115200 Baud| C[WebSerial API]
-    C -->|Stream Parsing| D[Browser State / IndexedDB]
-    D -->|React Canvas| E[Real-Time Plotting]
+    A["Hardware Sensors (IMU/Audio)"] -->|DMA Buffers| B["MCU UART"]
+    B -->|115200 Baud| C["WebSerial API"]
+    C -->|Stream Parsing| D["Browser State / IndexedDB"]
+    D -->|React Canvas| E["Real-Time Plotting"]
 ```
 
 ### 2. Digital Signal Processing (DSP) & Feature Extraction
@@ -51,15 +51,15 @@ Once a dataset is labeled and constructed, it is pushed to our cloud training cl
 sequenceDiagram
     participant Frontend
     participant Firebase
-    participant ML Worker (TF/EdgeImpulse)
+    participant MLWorker as ML Worker (TF/EdgeImpulse)
     
     Frontend->>Firebase: Upload Signed JSON Dataset
     Frontend->>Firebase: Create Training Job Request
-    Firebase->>ML Worker: Trigger Cloud Function
-    ML Worker->>ML Worker: Extract DSP Features
-    ML Worker->>ML Worker: Train Neural Network (Epochs)
-    ML Worker->>ML Worker: Post-Training INT8 Quantization
-    ML Worker->>Firebase: Upload Compiled C++ Tensor headers
+    Firebase->>MLWorker: Trigger Cloud Function
+    MLWorker->>MLWorker: Extract DSP Features
+    MLWorker->>MLWorker: Train Neural Network (Epochs)
+    MLWorker->>MLWorker: Post-Training INT8 Quantization
+    MLWorker->>Firebase: Upload Compiled C++ Tensor headers
     Firebase-->>Frontend: Stream Completion Status
 ```
 
